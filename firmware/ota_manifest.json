@@ -1,0 +1,22 @@
+{
+  "Configurations": [
+    {
+      "Board": "ESP32_DEV",
+      "Device": "node2",
+      "Version": "2.1.0",
+      "URL": "https://example.com/firmware/sensor_client_node2.ino.bin"
+    },
+    {
+      "Board": "ESP32_DEV",
+      "Device": "node3",
+      "Version": "2.1.0",
+      "URL": "https://example.com/firmware/sensor_client_node3.ino.bin"
+    },
+    {
+      "Board": "ESP32_DEV",
+      "Device": "gateway",
+      "Version": "2.1.0",
+      "URL": "https://example.com/firmware/firebase_gateway.ino.bin"
+    }
+  ]
+}

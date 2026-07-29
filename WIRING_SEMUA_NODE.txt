@@ -1,0 +1,373 @@
+================================================================================
+  HydroIoT — PANDUAN WIRING LENGKAP SEMUA NODE
+  Sistem Hidroponik IoT dengan LoRa + Firebase
+================================================================================
+  Versi  : 2.0 (3-Point TDS Calibration + WiFiManager)
+  Tanggal: 2026-06-04
+================================================================================
+
+
+--------------------------------------------------------------------------------
+  KOMPONEN YANG DIBUTUHKAN (per node)
+--------------------------------------------------------------------------------
+  - ESP32 DevKit V1 (38-pin atau 30-pin)
+  - LoRa E32-433T20D (modul UART, bukan SPI)
+  - Sensor DHT22 (suhu + kelembapan)
+  - Sensor HC-SR04 (ultrasonik, ketinggian air)
+  - Sensor TDS Meter (analog, 3.3V atau 5V)
+  - Modul Relay 3-channel (active LOW)
+  - Resistor 1k ohm x1  ]  voltage divider
+  - Resistor 2k ohm x1  ]  untuk ECHO HC-SR04
+  - Kabel jumper
+  - Power supply 5V 2A (minimal)
+
+
+================================================================================
+  NODE 2 — HIDROPONIK A
+  File program: sensor_client_node2.ino
+================================================================================
+
+  ┌─────────────────────────────────────────────────────────────────────────┐
+  │                         LORA E32-433T20D                                │
+  ├─────────────────┬───────────────────────┬───────────────────────────────┤
+  │  Pin LoRa E32   │  Pin ESP32 Node 2     │  Keterangan                   │
+  ├─────────────────┼───────────────────────┼───────────────────────────────┤
+  │  VCC            │  3.3V                 │  Tegangan modul               │
+  │  GND            │  GND                  │  Ground                       │
+  │  TX             │  GPIO 16 (RX2)        │  ESP32 terima dari LoRa       │
+  │  RX             │  GPIO 17 (TX2)        │  ESP32 kirim ke LoRa          │
+  │  AUX            │  GPIO 18              │  Status busy/ready LoRa       │
+  │  M0             │  GPIO 21              │  Mode select 0                │
+  │  M1             │  GPIO 22              │  Mode select 1                │
+  └─────────────────┴───────────────────────┴───────────────────────────────┘
+
+  CATATAN LoRa:
+  - Saat operasi normal: M0=LOW, M1=LOW (mode transparant/fixed)
+  - Gunakan kawat antena 17.3 cm untuk 433 MHz
+  - Jangan dekatkan antena ke kabel atau logam
+
+
+  ┌─────────────────────────────────────────────────────────────────────────┐
+  │                         SENSOR DHT22                                    │
+  ├─────────────────┬───────────────────────┬───────────────────────────────┤
+  │  Pin DHT22      │  Pin ESP32 Node 2     │  Keterangan                   │
+  ├─────────────────┼───────────────────────┼───────────────────────────────┤
+  │  VCC            │  3.3V                 │  Tegangan sensor              │
+  │  GND            │  GND                  │  Ground                       │
+  │  DATA           │  GPIO 4               │  Data serial DHT              │
+  └─────────────────┴───────────────────────┴───────────────────────────────┘
+
+  CATATAN DHT22:
+  - Pasang resistor pull-up 10k antara pin DATA dan VCC
+  - Jarak kabel DATA maksimal 20 meter
+
+
+  ┌─────────────────────────────────────────────────────────────────────────┐
+  │                  SENSOR HC-SR04 (Ultrasonik)                            │
+  │                  !! WAJIB VOLTAGE DIVIDER DI PIN ECHO !!                │
+  ├─────────────────┬───────────────────────┬───────────────────────────────┤
+  │  Pin HC-SR04    │  Hubungkan ke         │  Keterangan                   │
+  ├─────────────────┼───────────────────────┼───────────────────────────────┤
+  │  VCC            │  5V ESP32             │  HC-SR04 butuh 5V             │
+  │  GND            │  GND                  │  Ground                       │
+  │  TRIG           │  GPIO 32              │  Langsung (3.3V sudah cukup)  │
+  │  ECHO           │  Lihat skema bawah    │  OUTPUT 5V, HARUS dibagi!     │
+  └─────────────────┴───────────────────────┴───────────────────────────────┘
+
+  SKEMA VOLTAGE DIVIDER PIN ECHO:
+
+      HC-SR04 ECHO (5V)
+            │
+           [1k ohm]
+            │
+            ├─────────────── GPIO 33 (ESP32)
+            │
+           [2k ohm]
+            │
+           GND
+
+  Rumus: V_GPIO = 5V x 2k/(1k+2k) = 3.33V  ← aman untuk ESP32 (maks 3.6V)
+
+
+  ┌─────────────────────────────────────────────────────────────────────────┐
+  │                      SENSOR TDS METER                                   │
+  ├─────────────────┬───────────────────────┬───────────────────────────────┤
+  │  Pin TDS Meter  │  Pin ESP32 Node 2     │  Keterangan                   │
+  ├─────────────────┼───────────────────────┼───────────────────────────────┤
+  │  VCC            │  3.3V                 │  Supply 3.3V langsung         │
+  │  GND            │  GND                  │  Ground                       │
+  │  AOUT           │  GPIO 39 (VP/ADC1_3)  │  Langsung, TANPA voltage div  │
+  └─────────────────┴───────────────────────┴───────────────────────────────┘
+
+  CATATAN TDS:
+  - Modul disuply 3.3V → output AOUT maksimal 3.3V → langsung aman ke ESP32
+  - TIDAK perlu voltage divider karena sudah dalam range ADC ESP32 (0-3.3V)
+  - GPIO 39 adalah input-only (tidak ada internal pull-up) → sudah benar
+  - Kalibrasi pakai program test_tds.ino terlebih dahulu
+
+
+  ┌─────────────────────────────────────────────────────────────────────────┐
+  │        MODUL RELAY 3-CHANNEL (Active LOW) — SEMUA DI SISI KANAN        │
+  ├─────────────────┬───────────────────────┬───────────────────────────────┤
+  │  Pin Relay      │  Pin ESP32 Node 2     │  Fungsi Relay                 │
+  ├─────────────────┼───────────────────────┼───────────────────────────────┤
+  │  VCC            │  5V                   │  Tegangan relay               │
+  │  GND            │  GND                  │  Ground                       │
+  │  IN1            │  GPIO 25  [KANAN] ✓  │  Pompa Pengisian Air          │
+  │  IN2            │  GPIO 26  [KANAN] ✓  │  Pompa Nutrisi (AB Mix)       │
+  │  IN3            │  GPIO 27  [KANAN] ✓  │  Kipas Pendingin              │
+  └─────────────────┴───────────────────────┴───────────────────────────────┘
+
+  CATATAN RELAY:
+  - Active LOW: kirim LOW = relay ON, kirim HIGH = relay OFF
+  - Program sudah dikonfigurasi active LOW (digitalWrite HIGH = OFF)
+  - Hubungkan beban AC/DC ke terminal COM dan NO (Normally Open)
+  - Untuk pompa air 220V: Fasa → COM → NO → Pompa → Netral
+  - Relay di SISI KANAN agar tidak numpuk dengan LoRa+DHT22 (SISI KIRI)
+
+
+================================================================================
+  NODE 3 — HIDROPONIK B
+  File program: sensor_client_node3.ino
+================================================================================
+
+  ┌─────────────────────────────────────────────────────────────────────────┐
+  │                         LORA E32-433T20D                                │
+  ├─────────────────┬───────────────────────┬───────────────────────────────┤
+  │  Pin LoRa E32   │  Pin ESP32 Node 3     │  Keterangan                   │
+  ├─────────────────┼───────────────────────┼───────────────────────────────┤
+  │  VCC            │  3.3V                 │  Sama dengan Node 2           │
+  │  GND            │  GND                  │                               │
+  │  TX             │  GPIO 16 (RX2)        │  Sama dengan Node 2           │
+  │  RX             │  GPIO 17 (TX2)        │                               │
+  │  AUX            │  GPIO 18              │                               │
+  │  M0             │  GPIO 21              │                               │
+  │  M1             │  GPIO 22              │                               │
+  └─────────────────┴───────────────────────┴───────────────────────────────┘
+
+
+  ┌─────────────────────────────────────────────────────────────────────────┐
+  │                         SENSOR DHT22                                    │
+  ├─────────────────┬───────────────────────┬───────────────────────────────┤
+  │  Pin DHT22      │  Pin ESP32 Node 3     │  Keterangan                   │
+  ├─────────────────┼───────────────────────┼───────────────────────────────┤
+  │  VCC            │  3.3V                 │  Sama dengan Node 2           │
+  │  GND            │  GND                  │                               │
+  │  DATA           │  GPIO 4               │  Sama dengan Node 2           │
+  └─────────────────┴───────────────────────┴───────────────────────────────┘
+
+
+  ┌─────────────────────────────────────────────────────────────────────────┐
+  │             SENSOR HC-SR04 — Sama dengan Node 2                         │
+  ├─────────────────┬───────────────────────┬───────────────────────────────┤
+  │  TRIG           │  GPIO 32              │  Sama dengan Node 2           │
+  │  ECHO           │  GPIO 33 (via divider)│  Voltage divider 1k/2k       │
+  └─────────────────┴───────────────────────┴───────────────────────────────┘
+
+
+  ┌─────────────────────────────────────────────────────────────────────────┐
+  │                      SENSOR TDS METER                                   │
+  │                    !! BERBEDA DENGAN NODE 2 !!                          │
+  ├─────────────────┬───────────────────────┬───────────────────────────────┤
+  │  Pin TDS Meter  │  Pin ESP32 Node 3     │  Keterangan                   │
+  ├─────────────────┼───────────────────────┼───────────────────────────────┤
+  │  VCC            │  3.3V                 │  Supply 3.3V langsung         │
+  │  GND            │  GND                  │  Ground                       │
+  │  AOUT           │  GPIO 35 (ADC1_7)     │  Langsung, TANPA voltage div  │
+  └─────────────────┴───────────────────────┴───────────────────────────────┘
+
+  CATATAN TDS Node 3:
+  - Sama dengan Node 2: supply 3.3V → AOUT aman langsung ke GPIO 35
+  - GPIO berbeda dari Node 2 (35 bukan 39) — sudah disesuaikan di firmware
+
+
+  ┌─────────────────────────────────────────────────────────────────────────┐
+  │ MODUL RELAY 3-CHANNEL (Active LOW) — SEMUA SISI KANAN, SAMA DGN NODE2 │
+  ├─────────────────┬───────────────────────┬───────────────────────────────┤
+  │  Pin Relay      │  Pin ESP32 Node 3     │  Fungsi Relay                 │
+  ├─────────────────┼───────────────────────┼───────────────────────────────┤
+  │  VCC            │  5V                   │  Tegangan relay               │
+  │  GND            │  GND                  │  Ground                       │
+  │  IN1            │  GPIO 25  [KANAN] ✓  │  Pompa Pengisian Air          │
+  │  IN2            │  GPIO 26  [KANAN] ✓  │  Pompa Nutrisi (AB Mix)       │
+  │  IN3            │  GPIO 27  [KANAN] ✓  │  Kipas Pendingin              │
+  └─────────────────┴───────────────────────┴───────────────────────────────┘
+
+  CATATAN: Pin relay Node 3 SAMA dengan Node 2 (GPIO 25, 26, 27)
+  Wiring relay kedua node identik — lebih mudah saat pemasangan!
+
+
+================================================================================
+  GATEWAY (Node 1)
+  File program: gateway.ino
+================================================================================
+
+  ┌─────────────────────────────────────────────────────────────────────────┐
+  │                         LORA E32-433T20D                                │
+  ├─────────────────┬───────────────────────┬───────────────────────────────┤
+  │  Pin LoRa E32   │  Pin ESP32 Gateway    │  Keterangan                   │
+  ├─────────────────┼───────────────────────┼───────────────────────────────┤
+  │  VCC            │  3.3V                 │                               │
+  │  GND            │  GND                  │                               │
+  │  TX             │  GPIO 16 (RX2)        │  Sama persis Node 2 & 3       │
+  │  RX             │  GPIO 17 (TX2)        │                               │
+  │  AUX            │  GPIO 18              │                               │
+  │  M0             │  GPIO 21              │                               │
+  │  M1             │  GPIO 22              │                               │
+  └─────────────────┴───────────────────────┴───────────────────────────────┘
+
+  CATATAN GATEWAY:
+  - Tidak ada sensor DHT22, HC-SR04, TDS, atau Relay
+  - Hanya butuh LoRa E32 + WiFi bawaan ESP32
+  - Tombol BOOT (GPIO 0) = tombol reset WiFi (tahan saat nyala)
+  - Hubungkan ke jaringan WiFi lewat portal 192.168.4.1
+
+
+================================================================================
+  RANGKUMAN PERBEDAAN NODE 2 vs NODE 3
+================================================================================
+
+  ┌──────────────────────┬─────────────────┬─────────────────┬──────────────┐
+  │  Komponen            │  Node 2         │  Node 3         │  Sisi ESP32  │
+  ├──────────────────────┼─────────────────┼─────────────────┼──────────────┤
+  │  LoRa ADDL (address) │  0x02           │  0x03           │  —           │
+  │  TDS (analog)        │  GPIO 39        │  GPIO 35        │  KANAN       │
+  │  HC-SR04 TRIG        │  GPIO 32 (SAMA) │  GPIO 32 (SAMA) │  KANAN       │
+  │  HC-SR04 ECHO        │  GPIO 33 (SAMA) │  GPIO 33 (SAMA) │  KANAN       │
+  │  Relay 1 (Pompa Air) │  GPIO 25 (SAMA) │  GPIO 25 (SAMA) │  KANAN       │
+  │  Relay 2 (Nutrisi)   │  GPIO 26 (SAMA) │  GPIO 26 (SAMA) │  KANAN       │
+  │  Relay 3 (Kipas)     │  GPIO 27 (SAMA) │  GPIO 27 (SAMA) │  KANAN       │
+  ├──────────────────────┼─────────────────┼─────────────────┼──────────────┤
+  │  DHT22               │  GPIO 4 (SAMA)  │  GPIO 4 (SAMA)  │  KIRI        │
+  │  LoRa (semua pin)    │  GPIO 16,17,    │  GPIO 16,17,    │  KIRI        │
+  │                      │  18,21,22       │  18,21,22       │              │
+  └──────────────────────┴─────────────────┴─────────────────┴──────────────┘
+
+  LAYOUT FISIK ESP32 DevKit V1 (30-pin, USB di atas):
+
+  USB
+   |
+   |  [PIN KIRI]           [PIN KANAN]
+   |  3.3V                 VIN (5V)
+   |  GND                  GND
+   |  GPIO 15  (bebas)     GPIO 13   (bebas)
+   |  GPIO  2  (bebas)     GPIO 12   !!! JANGAN DIPAKAI !!!
+   |  GPIO  4  → DHT22    GPIO 14   (bebas)
+   |  GPIO 16  → LoRa RX  GPIO 27   ← Relay3 (Kipas)
+   |  GPIO 17  → LoRa TX  GPIO 26   ← Relay2 (Pompa Nutrisi)
+   |  GPIO  5  (bebas)     GPIO 25   ← Relay1 (Pompa Air)
+   |  GPIO 18  → LoRa AUX GPIO 33   ← ECHO HC-SR04
+   |  GPIO 19  (bebas)     GPIO 32   ← TRIG HC-SR04
+   |  GPIO 21  → LoRa M0  GPIO 35   ← TDS Node 3 saja
+   |  GPIO  3  (RX0)       GPIO 34   (bebas, input only)
+   |  GPIO  1  (TX0)       GPIO 39   ← TDS Node 2 saja
+   |  GPIO 22  → LoRa M1  GPIO 36   (bebas, input only)
+   |  GPIO 23  (bebas)     EN
+
+  KIRI  = LoRa E32 (5 pin) + DHT22 (1 pin) → PADAT, jangan tambah lagi
+  KANAN = Sensor (32,33,39/35) + Relay (25,26,27) → rapi, masih ada sisa
+
+
+================================================================================
+  GPIO YANG TIDAK BOLEH DIPAKAI + CATATAN STRAPPING (ESP32)
+================================================================================
+
+  JANGAN DIPAKAI:
+  GPIO 6, 7, 8, 9, 10, 11  → Terhubung ke flash internal, pasti error
+  GPIO 34, 35, 36, 39       → Input only, tidak bisa output
+                               (dipakai TDS: input only = sudah benar)
+  GPIO 1, 3                 → UART0 Serial Monitor, hindari untuk output
+
+  STRAPPING PIN (perlu perhatian tapi AMAN untuk relay):
+  ┌──────────┬──────────────────────────────┬────────────────────────────────┐
+  │  GPIO    │  Efek jika LOW saat boot     │  Status di sistem ini          │
+  ├──────────┼──────────────────────────────┼────────────────────────────────┤
+  │  GPIO  0 │  Masuk mode Download/Flash   │  Dipakai reset WiFi gateway    │
+  │  GPIO  2 │  Harus LOW untuk download    │  TIDAK dipakai → aman          │
+  │  GPIO  5 │  SDIO alternate mode         │  Relay3 Node3, init HIGH=OFF ✓ │
+  │  GPIO 12 │  Flash voltage 1.8V (rusak!) │  TIDAK dipakai → aman          │
+  │  GPIO 15 │  Suppress boot log UART0     │  Relay2 Node2, init HIGH=OFF ✓ │
+  └──────────┴──────────────────────────────┴────────────────────────────────┘
+
+  KENAPA GPIO 5 DAN 15 AMAN UNTUK RELAY?
+  - Relay modul active-LOW dengan optocoupler internal pull-UP
+  - Saat boot, pin ESP32 belum jadi OUTPUT → modul relay menarik pin ke HIGH
+  - HIGH = relay OFF = kondisi yang BENAR untuk strapping pin 5 dan 15
+  - Setelah boot, firmware langsung set pinMode OUTPUT + digitalWrite HIGH
+  - Tidak ada risiko relay nyala tiba-tiba saat boot ✓
+
+
+================================================================================
+  CATATAN PENTING KELISTRIKAN
+================================================================================
+
+  1. POWER SUPPLY
+     - Gunakan adaptor 5V 2A untuk setiap ESP32 + relay
+     - Jangan pakai port USB laptop sebagai sumber utama jika relay aktif
+     - Relay butuh arus lebih besar saat switching
+
+  2. GROUNDING
+     - Semua GND harus tersambung (ESP32 GND = Relay GND = Sensor GND)
+     - GND bersama mencegah noise pada pembacaan ADC (TDS)
+
+  3. SENSOR TDS
+     - Gunakan 3.3V untuk VCC modul TDS
+     - Output AOUT otomatis ≤ 3.3V → LANGSUNG ke GPIO ESP32, tanpa voltage divider
+     - ADC ESP32 tidak linear, sudah dikompensasi di firmware (formula cubic)
+     - Kalibrasi WAJIB dilakukan sebelum deploy menggunakan test_tds.ino
+     - Kalibrasi tersimpan di flash NVS, tidak hilang saat ganti program
+
+  4. RELAY
+     - Pasang flyback diode (1N4007) paralel dengan koil relay
+       jika tidak menggunakan modul relay (hanya bare relay)
+     - Modul relay biasanya sudah ada optocoupler dan diode
+
+  5. LORA E32
+     - WAJIB ada antena sebelum dinyalakan (tanpa antena bisa rusak)
+     - Jarak antar antena minimal 1-2 meter saat pengujian indoor
+     - Channel 0x17 = 433.875 MHz
+
+  6. HC-SR04
+     - WAJIB voltage divider di pin ECHO
+     - Tanpa voltage divider, ESP32 bisa rusak (pin toleransi maks 3.6V)
+     - Sensornya menggunakan 5V, output ECHOnya juga 5V
+
+
+================================================================================
+  URUTAN PENGERJAAN YANG DISARANKAN
+================================================================================
+
+  TAHAP 1 - Kalibrasi TDS (pakai test_tds.ino)
+  ├── Flash test_tds.ino ke ESP32 Node 2
+  ├── Buka Serial Monitor 115200 baud
+  ├── Celupkan probe TDS ke air 200 ppm → ketik: cal1 200
+  ├── Celupkan probe TDS ke air 500 ppm → ketik: cal2 500
+  ├── Celupkan probe TDS ke air 1000 ppm→ ketik: cal3 1000
+  ├── Ketik: show → verifikasi semua titik tersimpan
+  └── Ulangi untuk ESP32 Node 3 (GPIO TDS berbeda: 35)
+
+  TAHAP 2 - Upload Program Utama
+  ├── Flash sensor_client_node2.ino ke ESP32 Node 2
+  │     → Kalibrasi terbaca otomatis dari NVS (tidak perlu kalibrasi ulang)
+  ├── Flash sensor_client_node3.ino ke ESP32 Node 3
+  └── Flash gateway.ino ke ESP32 Gateway
+
+  TAHAP 3 - Konfigurasi WiFi Gateway
+  ├── Nyalakan Gateway ESP32
+  ├── Jika pertama kali → HP connect ke WiFi "HydroIoT-Setup"
+  ├── Buka browser → 192.168.4.1
+  ├── Isi SSID + Password WiFi rumah/kampus
+  └── (Opsional) Isi Firebase Host & Auth Key jika perlu ganti
+
+  TAHAP 4 - Verifikasi
+  ├── Buka Serial Monitor Gateway → cek data masuk dari Node
+  ├── Buka Firebase Console → cek /sensors/node2 dan /sensors/node3
+  └── Buka index.html → data sensor tampil di web dashboard
+
+  UNTUK GANTI WiFi (tanpa reflash):
+  └── Tahan tombol BOOT (GPIO 0) saat ESP32 Gateway dinyalakan
+      → Otomatis buka portal 192.168.4.1
+
+================================================================================
+  END OF DOCUMENT
+================================================================================

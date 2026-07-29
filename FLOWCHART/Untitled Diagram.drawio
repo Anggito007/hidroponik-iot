@@ -1,0 +1,106 @@
+<mxfile host="app.diagrams.net">
+  <diagram name="Page-1" id="08bPE1qrUGnNjzgvPD6M">
+    <mxGraphModel dx="1012" dy="516" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="827" pageHeight="1169" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="T4vVme3CC9DMEoUDi5Uh-4" edge="1" parent="1" source="T4vVme3CC9DMEoUDi5Uh-1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" value="">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="414" y="190" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="T4vVme3CC9DMEoUDi5Uh-1" parent="1" style="ellipse;whiteSpace=wrap;html=1;" value="Mulai" vertex="1">
+          <mxGeometry height="80" width="120" x="354" y="70" as="geometry" />
+        </mxCell>
+        <mxCell id="T4vVme3CC9DMEoUDi5Uh-7" edge="1" parent="1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" target="T4vVme3CC9DMEoUDi5Uh-5" value="">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="414" y="250" as="sourcePoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="T4vVme3CC9DMEoUDi5Uh-9" edge="1" parent="1" source="T4vVme3CC9DMEoUDi5Uh-5" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" target="T4vVme3CC9DMEoUDi5Uh-8" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="T4vVme3CC9DMEoUDi5Uh-5" parent="1" style="shape=parallelogram;perimeter=parallelogramPerimeter;whiteSpace=wrap;html=1;fixedSize=1;" value="Baca Data Suhu dan Kelembapan DHT22" vertex="1">
+          <mxGeometry height="60" width="180" x="324" y="290" as="geometry" />
+        </mxCell>
+        <mxCell id="T4vVme3CC9DMEoUDi5Uh-10" edge="1" parent="1" source="T4vVme3CC9DMEoUDi5Uh-8" style="rounded=0;orthogonalLoop=1;jettySize=auto;html=1;">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="560" y="450" />
+              <mxPoint x="570" y="270" />
+            </Array>
+            <mxPoint x="414" y="270" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="T4vVme3CC9DMEoUDi5Uh-12" edge="1" parent="1" source="T4vVme3CC9DMEoUDi5Uh-8" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" value="">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="414" y="554.5" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="T4vVme3CC9DMEoUDi5Uh-8" parent="1" style="rhombus;whiteSpace=wrap;html=1;" value="Pembacaan Berhasil?" vertex="1">
+          <mxGeometry height="120" width="149" x="339.5" y="390" as="geometry" />
+        </mxCell>
+        <mxCell id="T4vVme3CC9DMEoUDi5Uh-14" edge="1" parent="1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" value="">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="414" y="614.5" as="sourcePoint" />
+            <mxPoint x="413.03999999999996" y="660" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="T4vVme3CC9DMEoUDi5Uh-16" edge="1" parent="1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" target="T4vVme3CC9DMEoUDi5Uh-15" value="">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="413" y="720" as="sourcePoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="T4vVme3CC9DMEoUDi5Uh-21" edge="1" parent="1" source="T4vVme3CC9DMEoUDi5Uh-15" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" target="T4vVme3CC9DMEoUDi5Uh-20" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="T4vVme3CC9DMEoUDi5Uh-15" parent="1" style="shape=parallelogram;perimeter=parallelogramPerimeter;whiteSpace=wrap;html=1;fixedSize=1;" value="Relay fan ON" vertex="1">
+          <mxGeometry height="60" width="180" x="323" y="790" as="geometry" />
+        </mxCell>
+        <mxCell id="T4vVme3CC9DMEoUDi5Uh-19" edge="1" parent="1" source="T4vVme3CC9DMEoUDi5Uh-17" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" target="T4vVme3CC9DMEoUDi5Uh-18" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="T4vVme3CC9DMEoUDi5Uh-17" parent="1" style="rhombus;whiteSpace=wrap;html=1;" value="Suhu &amp;gt; Temp_Fan_On" vertex="1">
+          <mxGeometry height="120" width="149" x="339.5" y="640" as="geometry" />
+        </mxCell>
+        <mxCell id="T4vVme3CC9DMEoUDi5Uh-24" edge="1" parent="1" source="T4vVme3CC9DMEoUDi5Uh-18" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" target="T4vVme3CC9DMEoUDi5Uh-20">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="620" y="910" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="T4vVme3CC9DMEoUDi5Uh-18" parent="1" style="shape=parallelogram;perimeter=parallelogramPerimeter;whiteSpace=wrap;html=1;fixedSize=1;" value="Relay fan Off" vertex="1">
+          <mxGeometry height="60" width="180" x="530" y="670" as="geometry" />
+        </mxCell>
+        <mxCell id="T4vVme3CC9DMEoUDi5Uh-23" edge="1" parent="1" source="T4vVme3CC9DMEoUDi5Uh-20" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" target="T4vVme3CC9DMEoUDi5Uh-22" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="T4vVme3CC9DMEoUDi5Uh-20" parent="1" style="shape=parallelogram;perimeter=parallelogramPerimeter;whiteSpace=wrap;html=1;fixedSize=1;" value="Kirim Data Suhu dan Kelembapan ke LoRa" vertex="1">
+          <mxGeometry height="60" width="180" x="323" y="880" as="geometry" />
+        </mxCell>
+        <mxCell id="T4vVme3CC9DMEoUDi5Uh-22" parent="1" style="ellipse;whiteSpace=wrap;html=1;" value="Selesai" vertex="1">
+          <mxGeometry height="80" width="120" x="353" y="970" as="geometry" />
+        </mxCell>
+        <mxCell id="xu3bcyf_edrZENXRdMpE-1" parent="1" style="rounded=1;whiteSpace=wrap;html=1;" value="Inisialiasai Sensor DHT22" vertex="1">
+          <mxGeometry height="60" width="120" x="354" y="190" as="geometry" />
+        </mxCell>
+        <mxCell id="xu3bcyf_edrZENXRdMpE-2" parent="1" style="rounded=1;whiteSpace=wrap;html=1;" value="Simpan Data Ke Variable" vertex="1">
+          <mxGeometry height="60" width="120" x="354" y="555" as="geometry" />
+        </mxCell>
+        <mxCell id="xu3bcyf_edrZENXRdMpE-3" parent="1" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;rounded=0;" value="N" vertex="1">
+          <mxGeometry height="30" width="60" x="473" y="670" as="geometry" />
+        </mxCell>
+        <mxCell id="xu3bcyf_edrZENXRdMpE-4" parent="1" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;rounded=0;" value="N" vertex="1">
+          <mxGeometry height="30" width="60" x="474" y="420" as="geometry" />
+        </mxCell>
+        <mxCell id="xu3bcyf_edrZENXRdMpE-5" parent="1" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;rounded=0;" value="Y" vertex="1">
+          <mxGeometry height="30" width="60" x="400" y="510" as="geometry" />
+        </mxCell>
+        <mxCell id="xu3bcyf_edrZENXRdMpE-6" parent="1" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;rounded=0;" value="Y" vertex="1">
+          <mxGeometry height="30" width="60" x="400" y="760" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

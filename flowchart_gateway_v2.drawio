@@ -1,0 +1,186 @@
+<mxfile host="app.diagrams.net">
+  <diagram id="gateway-hidroponik" name="Flowchart Gateway">
+    <mxGraphModel dx="662" dy="338" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="850" pageHeight="1400" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="2" parent="1" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=16;fontStyle=1;fontFamily=Times New Roman;" value="Flowchart Gateway - Sistem Hidroponik IoT" vertex="1">
+          <mxGeometry height="40" width="550" x="150" y="20" as="geometry" />
+        </mxCell>
+        <mxCell id="3" parent="1" style="ellipse;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=14;fontStyle=1;fontFamily=Times New Roman;" value="MULAI" vertex="1">
+          <mxGeometry height="50" width="150" x="325" y="80" as="geometry" />
+        </mxCell>
+        <mxCell id="4" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;fontFamily=Times New Roman;" value="Inisialisasi Perangkat&#xa;- Konfigurasi Modul LoRa E32&#xa;- Koneksi WiFi&#xa;- Sinkronisasi Waktu (NTP)&#xa;- Inisialisasi Firebase" vertex="1">
+          <mxGeometry height="110" width="250" x="275" y="160" as="geometry" />
+        </mxCell>
+        <mxCell id="5" parent="1" style="rhombus;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=12;fontFamily=Times New Roman;" value="LoRa Berhasil&#xa;Dikonfigurasi?" vertex="1">
+          <mxGeometry height="80" width="250" x="275" y="300" as="geometry" />
+        </mxCell>
+        <mxCell id="6" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=12;fontFamily=Times New Roman;" value="Tampilkan Error&#xa;Program Berhenti" vertex="1">
+          <mxGeometry height="60" width="180" x="590" y="310" as="geometry" />
+        </mxCell>
+        <mxCell id="7" parent="1" style="rhombus;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=12;fontFamily=Times New Roman;" value="WiFi Berhasil&#xa;Terhubung?" vertex="1">
+          <mxGeometry height="80" width="250" x="275" y="410" as="geometry" />
+        </mxCell>
+        <mxCell id="8" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=12;fontFamily=Times New Roman;" value="Coba Reconnect WiFi&#xa;(setiap 5 detik)" vertex="1">
+          <mxGeometry height="60" width="180" x="590" y="420" as="geometry" />
+        </mxCell>
+        <mxCell id="9" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=12;fontStyle=1;fontFamily=Times New Roman;" value="PROGRAM UTAMA&#xa;(Berjalan Terus-Menerus)" vertex="1">
+          <mxGeometry height="60" width="250" x="275" y="520" as="geometry" />
+        </mxCell>
+        <mxCell id="10" parent="1" style="rhombus;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=12;fontFamily=Times New Roman;" value="Ada data masuk&#xa;dari Node via LoRa?" vertex="1">
+          <mxGeometry height="80" width="250" x="275" y="610" as="geometry" />
+        </mxCell>
+        <mxCell id="11" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=11;fontFamily=Times New Roman;" value="Baca dan Pisahkan Data&#xa;dari Node&#xa;&#xa;- ID Node &amp; Nomor urut paket&#xa;- Suhu &amp; Kelembapan&#xa;- Jarak air di tandon&#xa;- Kadar nutrisi (TDS)&#xa;- Status relay R1, R2, R3&#xa;- Faktor kalibrasi" vertex="1">
+          <mxGeometry height="190" width="200" x="590" y="580" as="geometry" />
+        </mxCell>
+        <mxCell id="12" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=11;fontFamily=Times New Roman;" value="Hitung Packet Loss&#xa;&#xa;Bandingkan nomor urut&#xa;paket yang diterima&#xa;dengan yang seharusnya&#xa;Hasil: Persentase paket hilang" vertex="1">
+          <mxGeometry height="130" width="200" x="590" y="790" as="geometry" />
+        </mxCell>
+        <mxCell id="13" parent="1" style="rhombus;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11;fontFamily=Times New Roman;" value="Node sebelumnya&#xa;berstatus OFFLINE?" vertex="1">
+          <mxGeometry height="80" width="200" x="590" y="950" as="geometry" />
+        </mxCell>
+        <mxCell id="14" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;fontFamily=Times New Roman;" value="Perbarui status Node&#xa;menjadi ONLINE&#xa;di Firebase" vertex="1">
+          <mxGeometry height="70" width="170" x="840" y="955" as="geometry" />
+        </mxCell>
+        <mxCell id="15" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;fontFamily=Times New Roman;" value="Kirim Data Sensor ke Firebase&#xa;/sensors/nodeX&#xa;&#xa;- Semua data sensor&#xa;- Status relay&#xa;- Persentase packet loss&#xa;- Waktu pengiriman" vertex="1">
+          <mxGeometry height="130" width="250" x="565" y="1060" as="geometry" />
+        </mxCell>
+        <mxCell id="16" parent="1" style="rhombus;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=12;fontFamily=Times New Roman;" value="Sudah 2 detik sejak&#xa;terakhir cek relay?" vertex="1">
+          <mxGeometry height="80" width="250" x="275" y="720" as="geometry" />
+        </mxCell>
+        <mxCell id="18" parent="1" style="rhombus;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=12;fontFamily=Times New Roman;" value="Ada perubahan&#xa;perintah relay?" vertex="1">
+          <mxGeometry height="80" width="200" x="275" y="950" as="geometry" />
+        </mxCell>
+        <mxCell id="19" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;fontFamily=Times New Roman;" value="Kirim Perintah ke Node&#xa;via LoRa&#xa;&#xa;Format:&#xa;CMD:node:Relay:ON/OFF" vertex="1">
+          <mxGeometry height="100" width="200" x="275" y="1060" as="geometry" />
+        </mxCell>
+        <mxCell id="20" parent="1" style="rhombus;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=12;fontFamily=Times New Roman;" value="Cek Status Node&#xa;(setiap 5 detik)&#xa;&#xa;Node tidak kirim data&#xa;lebih dari 30 detik?" vertex="1">
+          <mxGeometry height="100" width="250" x="275" y="1190" as="geometry" />
+        </mxCell>
+        <mxCell id="21" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=11;fontFamily=Times New Roman;" value="Tandai Node OFFLINE&#xa;Perbarui status di Firebase&#xa;/status/nodeX = false" vertex="1">
+          <mxGeometry height="70" width="200" x="590" y="1215" as="geometry" />
+        </mxCell>
+        <mxCell id="22" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=11;fontFamily=Times New Roman;" value="Ulangi dari Awal" vertex="1">
+          <mxGeometry height="50" width="200" x="300" y="1330" as="geometry" />
+        </mxCell>
+        <mxCell id="30" edge="1" parent="1" source="3" target="4">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="31" edge="1" parent="1" source="4" target="5">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="32" edge="1" parent="1" source="5" style="edgeStyle=orthogonalEdgeStyle;fontFamily=Times New Roman;" target="6" value="TIDAK">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="33" edge="1" parent="1" source="5" style="edgeStyle=orthogonalEdgeStyle;fontFamily=Times New Roman;" target="7" value="YA">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="34" edge="1" parent="1" source="7" style="edgeStyle=orthogonalEdgeStyle;fontFamily=Times New Roman;" target="8" value="TIDAK">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="35" edge="1" parent="1" source="8" style="edgeStyle=orthogonalEdgeStyle;fontFamily=Times New Roman;" target="7">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="810" y="450" />
+              <mxPoint x="810" y="340" />
+              <mxPoint x="700" y="340" />
+              <mxPoint x="700" y="450" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="36" edge="1" parent="1" source="7" style="edgeStyle=orthogonalEdgeStyle;fontFamily=Times New Roman;" target="9" value="YA">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="37" edge="1" parent="1" source="9" target="10">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="38" edge="1" parent="1" source="10" style="edgeStyle=orthogonalEdgeStyle;fontFamily=Times New Roman;" target="11" value="YA">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="39" edge="1" parent="1" source="10" style="edgeStyle=orthogonalEdgeStyle;fontFamily=Times New Roman;" target="16" value="TIDAK">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="40" edge="1" parent="1" source="11" target="12">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="41" edge="1" parent="1" source="12" target="13">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="42" edge="1" parent="1" source="13" style="edgeStyle=orthogonalEdgeStyle;fontFamily=Times New Roman;" target="14" value="YA">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="43" edge="1" parent="1" source="13" style="edgeStyle=orthogonalEdgeStyle;fontFamily=Times New Roman;" target="15" value="TIDAK">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="44" edge="1" parent="1" source="14" target="15">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="45" edge="1" parent="1" source="17" style="edgeStyle=orthogonalEdgeStyle;exitX=0;exitY=0.5;exitDx=0;exitDy=0;fontFamily=Times New Roman;" target="16">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="410" y="760" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="46" edge="1" parent="1" source="16" style="edgeStyle=orthogonalEdgeStyle;fontFamily=Times New Roman;" target="17" value="YA">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="47" edge="1" parent="1" source="16" style="edgeStyle=orthogonalEdgeStyle;exitX=0;exitY=0.5;exitDx=0;exitDy=0;fontFamily=Times New Roman;" target="20" value="TIDAK">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="200" y="760" />
+              <mxPoint x="200" y="1240" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="48" edge="1" parent="1" source="17" target="18">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="49" edge="1" parent="1" source="18" style="edgeStyle=orthogonalEdgeStyle;fontFamily=Times New Roman;" target="19" value="YA">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="50" edge="1" parent="1" source="18" style="edgeStyle=orthogonalEdgeStyle;exitX=0;exitY=0.5;exitDx=0;exitDy=0;fontFamily=Times New Roman;" target="20" value="TIDAK">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="220" y="990" />
+              <mxPoint x="220" y="1240" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="51" edge="1" parent="1" source="19" target="20">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="52" edge="1" parent="1" source="20" style="edgeStyle=orthogonalEdgeStyle;fontFamily=Times New Roman;" target="21" value="YA">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="53" edge="1" parent="1" source="20" style="edgeStyle=orthogonalEdgeStyle;fontFamily=Times New Roman;" target="22" value="TIDAK">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="54" edge="1" parent="1" source="21" target="22">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="55" edge="1" parent="1" source="22" style="edgeStyle=orthogonalEdgeStyle;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;fontFamily=Times New Roman;" target="9">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="50" y="1355" />
+              <mxPoint x="50" y="550" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="q3XONrBDHSck-oMCQmHu-55" edge="1" parent="1" source="15" style="edgeStyle=orthogonalEdgeStyle;exitX=0;exitY=0.5;exitDx=0;exitDy=0;fontFamily=Times New Roman;" target="17" value="">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="410" y="1125" />
+            </Array>
+            <mxPoint x="565" y="1125" as="sourcePoint" />
+            <mxPoint x="410" y="797" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="17" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=11;fontFamily=Times New Roman;" value="Baca Perintah Relay&#xa;dari Firebase&#xa;/relays/node2&#xa;/relays/node3" vertex="1">
+          <mxGeometry height="90" width="200" x="300" y="830" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

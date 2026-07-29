@@ -1,0 +1,276 @@
+============================================================
+  HydroIoT — WIRING LENGKAP NODE 2 (Hidroponik A)
+  ESP32 + Board Ekspansi + LoRa E32 + Sensor + 2x Relay
+  PSU: 12V 3A
+============================================================
+
+
+============================================================
+  KOMPONEN YANG DIPAKAI
+============================================================
+
+  1. ESP32 WROOM-32 + Board Ekspansi
+  2. LoRa E32-433T20D
+  3. DHT22 (Suhu & Kelembapan)
+  4. HC-SR04 (Ketinggian Air)
+  5. TDS Sensor (Nutrisi)
+  6. Modul Relay 2-Channel x2 (total 3 channel dipakai)
+  7. Modul Step-Down Hitam (12V → 5V & 3.3V)
+  8. PSU 12V 3A
+
+
+============================================================
+  BAGIAN 1 — POWER SUPPLY & DISTRIBUSI TEGANGAN
+============================================================
+
+  PSU 12V 3A
+  ├── Terminal (+) → Input (+) Modul Step-Down Hitam
+  └── Terminal (-) → Input (-) Modul Step-Down Hitam
+                     = GND BERSAMA semua komponen
+
+  Modul Step-Down Hitam (output):
+  ├── Output +5V  → Pin VIN Board Ekspansi ESP32
+  ├── Output +5V  → Pin VCC Modul Relay 1 (header bawah)
+  ├── Output +5V  → Pin VCC Modul Relay 2 (header bawah)
+  ├── Output GND  → Pin GND Board Ekspansi ESP32
+  ├── Output GND  → Pin GND Modul Relay 1 (header bawah)
+  └── Output GND  → Pin GND Modul Relay 2 (header bawah)
+
+  Board Ekspansi ESP32 (distribusi internal):
+  ├── Pin 3.3V → VCC LoRa E32
+  ├── Pin 3.3V → VCC DHT22
+  ├── Pin 3.3V → VCC TDS Sensor
+  ├── Pin 3.3V → Pin VDC Modul Relay 1 (samping)
+  ├── Pin 3.3V → Pin VDC Modul Relay 2 (samping)
+  ├── Pin 5V   → VCC HC-SR04
+  └── Pin GND  → GND semua sensor & relay
+
+
+============================================================
+  BAGIAN 2 — LoRa E32-433T20D
+============================================================
+
+  LoRa E32        → Board Ekspansi ESP32
+  ├── VCC         → Pin 3.3V   ← WAJIB 3.3V, JANGAN 5V!
+  ├── GND         → Pin GND
+  ├── RX          → GPIO 17    (TX ESP32 → RX LoRa, silang)
+  ├── TX          → GPIO 16    (TX LoRa → RX ESP32, silang)
+  ├── AUX         → GPIO 18
+  ├── M0          → GPIO 21
+  └── M1          → GPIO 22
+
+  CATATAN LoRa:
+  - VCC HARUS 3.3V — 5V merusak permanen, tidak bisa diperbaiki
+  - Antena harus tegak lurus (vertikal)
+  - Jauhkan antena dari kabel relay minimal 5cm
+  - Gunakan konektor female dupont, hot glue setelah terpasang
+
+
+============================================================
+  BAGIAN 3 — DHT22 (Suhu & Kelembapan)
+============================================================
+
+  DHT22           → Board Ekspansi ESP32
+  ├── Pin 1 VCC   → Pin 3.3V
+  ├── Pin 2 DATA  → GPIO 4
+  ├── Pin 3       → tidak dipakai (kosongkan)
+  └── Pin 4 GND   → Pin GND
+
+  CATATAN DHT22:
+  - Firmware sudah aktifkan internal pull-up di GPIO 4
+  - Tidak perlu resistor pull-up eksternal 10kΩ
+  - Pasang di lokasi yang ada sirkulasi udara
+
+
+============================================================
+  BAGIAN 4 — HC-SR04 (Ketinggian Air)
+============================================================
+
+  HC-SR04         → Board Ekspansi ESP32
+  ├── VCC         → Pin 5V
+  ├── GND         → Pin GND
+  ├── TRIG        → GPIO 32
+  └── ECHO        → [Voltage Divider] → GPIO 33
+
+  VOLTAGE DIVIDER (WAJIB di pin ECHO):
+  ┌─────────────────────────────────────────┐
+  │                                         │
+  │  ECHO HC-SR04                           │
+  │       │                                 │
+  │    [1kΩ]  ← Resistor 1000 Ohm          │
+  │       │                                 │
+  │    GPIO 33 (ESP32)                      │
+  │       │                                 │
+  │    [2kΩ]  ← Resistor 2000 Ohm          │
+  │       │                                 │
+  │      GND                                │
+  └─────────────────────────────────────────┘
+
+  CATATAN HC-SR04:
+  - HC-SR04 output ECHO = 5V, ESP32 hanya tahan 3.3V
+  - TANPA voltage divider = GPIO 33 bisa rusak permanen
+  - Pasang sensor di atas ember, menghadap ke bawah (ke air)
+  - Jarak baca: 2cm - 400cm
+
+
+============================================================
+  BAGIAN 5 — TDS SENSOR (Konsentrasi Nutrisi)
+============================================================
+
+  TDS Sensor      → Board Ekspansi ESP32
+  ├── VCC         → Pin 3.3V
+  ├── GND         → Pin GND
+  └── AOUT        → GPIO 36 (VP)
+
+  CATATAN TDS:
+  - GPIO 36 (VP) = input only, ADC2 — TIDAK konflik dengan LoRa UART2
+  - JANGAN pakai GPIO 35/34/32/33 untuk TDS — ADC1 konflik dengan UART2 LoRa
+  - Tandai kabel VCC = merah, GND = hitam (hindari salah colok)
+  - Probe TDS dicelupkan ke larutan nutrisi
+
+
+============================================================
+  BAGIAN 6 — MODUL RELAY 1 (Pompa Air + Pompa Nutrisi)
+============================================================
+
+  Pin Kontrol:
+  ├── VCC (header bawah) → 5V Step-Down Hitam
+  ├── GND (header bawah) → GND Step-Down Hitam
+  ├── VDC (pin samping)  → 3.3V Board Ekspansi ESP32
+  ├── IN1                → GPIO 19 ESP32  (Pompa Air)
+  ├── IN2                → GPIO 23 ESP32  (Pompa Nutrisi)
+  └── Jumper VDC-VCC     → DILEPAS
+
+  Pin Beban 12V:
+  ├── R1 COM → (+) 12V PSU
+  │   R1 NO  → (+) kabel Pompa Air
+  │            (-) kabel Pompa Air → GND PSU
+  │
+  └── R2 COM → (+) 12V PSU
+      R2 NO  → (+) kabel Pompa Nutrisi
+               (-) kabel Pompa Nutrisi → GND PSU
+
+
+============================================================
+  BAGIAN 7 — MODUL RELAY 2 (Kipas + tidak dipakai)
+============================================================
+
+  Pin Kontrol:
+  ├── VCC (header bawah) → 5V Step-Down Hitam
+  ├── GND (header bawah) → GND Step-Down Hitam
+  ├── VDC (pin samping)  → 3.3V Board Ekspansi ESP32
+  ├── IN1                → GPIO 25 ESP32  (Kipas)
+  ├── IN2                → 3.3V ESP32     (tidak dipakai, paksa OFF)
+  └── Jumper VDC-VCC     → DILEPAS
+
+  Pin Beban 12V:
+  ├── R1 COM → (+) 12V PSU
+  │   R1 NO  → (+) kabel Kipas
+  │            (-) kabel Kipas → GND PSU
+  │
+  └── R2     → tidak dipakai (biarkan kosong)
+
+  CATATAN RELAY:
+  - Jumper VDC-VCC HARUS DILEPAS di kedua modul relay
+  - Pakai terminal NO (Normally Open), BUKAN NC
+  - Relay OFF = pompa/kipas MATI
+  - Relay ON  = pompa/kipas NYALA
+  - COM semua relay bisa disolder jadi 1 kabel ke (+) 12V PSU
+  - GND pompa/kipas bisa disolder jadi 1 kabel ke (-) PSU
+
+
+============================================================
+  BAGIAN 8 — RINGKASAN SEMUA PIN ESP32
+============================================================
+
+  GPIO  4  → DHT22 DATA
+  GPIO 16  → LoRa RX  (dari TX LoRa)
+  GPIO 17  → LoRa TX  (ke RX LoRa)
+  GPIO 18  → LoRa AUX
+  GPIO 19  → IN1 Relay 1 — Pompa Air
+  GPIO 21  → LoRa M0
+  GPIO 22  → LoRa M1
+  GPIO 23  → IN2 Relay 1 — Pompa Nutrisi
+  GPIO 25  → IN1 Relay 2 — Kipas
+  GPIO 32  → HC-SR04 TRIG
+  GPIO 33  → HC-SR04 ECHO (via voltage divider 1k/2k)
+  GPIO 36  → TDS AOUT (ADC2/VP, input only — tidak konflik dengan LoRa)
+
+  PIN JANGAN DIPAKAI UNTUK TDS/ADC:
+  GPIO 34, 35 → ADC1, konflik dengan UART2 yang dipakai LoRa E32
+
+  3.3V     → LoRa VCC, DHT22 VCC, TDS VCC, VDC Relay 1&2
+  5V/VIN   → HC-SR04 VCC, VCC Relay 1&2 (dari step-down)
+  GND      → Semua GND komponen (common ground)
+
+  PIN YANG TIDAK BOLEH DIPAKAI UNTUK RELAY:
+  GPIO  0  → Strapping pin (boot mode)
+  GPIO  2  → Strapping pin (onboard LED)
+  GPIO  6  → Flash SPI (internal, jangan dipakai)
+  GPIO  7  → Flash SPI (internal, jangan dipakai)
+  GPIO  8  → Flash SPI (internal, jangan dipakai)
+  GPIO  9  → Flash SPI (internal, jangan dipakai)
+  GPIO 10  → Flash SPI (internal, jangan dipakai)
+  GPIO 11  → Flash SPI (internal, jangan dipakai)
+  GPIO 12  → Strapping pin (flash voltage)
+  GPIO 15  → Strapping pin
+
+
+============================================================
+  BAGIAN 9 — DIAGRAM POWER LENGKAP
+============================================================
+
+  PSU 12V 3A
+       │
+       ├──(+12V)──────────────────────────────────────────┐
+       │                                                   │
+       │                                          COM Relay 1 R1 (Pompa Air)
+       │                                          COM Relay 1 R2 (Pompa Nutrisi)
+       │                                          COM Relay 2 R1 (Kipas)
+       │                                          (bisa disolder jadi 1 kabel)
+       │
+       └──(+12V)──→ Step-Down Hitam Input (+)
+                         │
+                         ├──(+5V)──→ VIN Board Ekspansi ESP32
+                         │                │
+                         │                ├──(3.3V)──→ LoRa VCC
+                         │                ├──(3.3V)──→ DHT22 VCC
+                         │                ├──(3.3V)──→ TDS VCC
+                         │                ├──(3.3V)──→ VDC Relay 1
+                         │                ├──(3.3V)──→ VDC Relay 2
+                         │                └──(5V)────→ HC-SR04 VCC
+                         │
+                         ├──(+5V)──→ VCC Relay 1 (header bawah)
+                         ├──(+5V)──→ VCC Relay 2 (header bawah)
+                         │
+  PSU (-) ──────────────→ Step-Down GND
+                         ├──(GND)──→ GND Board ESP32
+                         ├──(GND)──→ GND Relay 1
+                         ├──(GND)──→ GND Relay 2
+                         ├──(GND)──→ GND HC-SR04
+                         ├──(GND)──→ GND DHT22
+                         ├──(GND)──→ GND TDS
+                         ├──(GND)──→ GND LoRa
+                         └──(GND)──→ GND (-) Pompa & Kipas
+
+
+============================================================
+  BAGIAN 10 — CHECKLIST SEBELUM NYALAKAN
+============================================================
+
+  [ ] PSU belum dinyalakan saat wiring
+  [ ] Jumper VDC-VCC Relay 1 sudah DILEPAS
+  [ ] Jumper VDC-VCC Relay 2 sudah DILEPAS
+  [ ] LoRa VCC tersambung ke 3.3V (BUKAN 5V)
+  [ ] Voltage divider HC-SR04 sudah terpasang
+  [ ] Semua GND terhubung ke satu titik
+  [ ] Kabel relay pakai terminal NO (bukan NC)
+  [ ] Antena LoRa tegak lurus, jauh dari kabel relay
+  [ ] Kabel VCC ditandai merah, GND ditandai hitam
+  [ ] Firmware sudah diupload ke ESP32
+  [ ] Python bridge (lora_bridge.py) siap dijalankan
+
+============================================================
+  HydroIoT System — Node 2 Hidroponik A
+  PSU: 12V 3A | ESP32 WROOM-32 | LoRa E32-433T20D
+============================================================

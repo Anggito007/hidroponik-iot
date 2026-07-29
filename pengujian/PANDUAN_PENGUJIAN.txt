@@ -1,0 +1,160 @@
+============================================================
+  PANDUAN PENGUJIAN — SKRIPSI HYDROPONIK IoT
+============================================================
+
+Output semua program dalam format CSV (Comma-Separated Values).
+Bisa langsung di-copy ke Excel/Google Sheets untuk analisis.
+
+============================================================
+  1. PENGUJIAN SENSOR DHT22
+============================================================
+
+  File: firmware/test_dht22/test_dht22.ino
+
+  LANGKAH:
+  1. Upload program ke ESP32
+  2. Buka Serial Monitor (115200 baud)
+  3. Catat data Suhu & Kelembapan dari Serial Monitor
+  4. Bandingkan dengan termometer/hygrometer referensi
+
+  TABEL PENGUJIAN:
+  ┌────┬──────────────┬─────────────┬───────────┬──────────┐
+  │ No │ DHT22 Suhu   │ Termometer  │ Selisih   │ Error %  │
+  ├────┼──────────────┼─────────────┼───────────┼──────────┤
+  │ 1  │              │             │           │          │
+  │ 2  │              │             │           │          │
+  │... │              │             │           │          │
+  └────┴──────────────┴─────────────┴───────────┴──────────┘
+
+  RUMUS ERROR:
+    Error % = |DHT22 - Referensi| / Referensi × 100%
+
+
+============================================================
+  2. PENGUJIAN SENSOR TDS
+============================================================
+
+  File: firmware/test_tds/test_tds.ino
+
+  LANGKAH:
+  1. Siapkan larutan referensi (misal 500 ppm, 1000 ppm)
+  2. Upload program ke ESP32
+  3. Celup probe ke larutan, ketik "cal 500" di Serial Monitor
+     (kalibrasi dengan larutan 500 ppm)
+  4. Test dengan larutan berbeda
+  5. Bandingkan dengan TDS meter digital referensi
+
+  TABEL PENGUJIAN:
+  ┌────┬──────────────┬─────────────┬───────────┬──────────┐
+  │ No │ Sensor TDS   │ TDS Meter   │ Selisih   │ Error %  │
+  │    │ (ppm)        │ Ref (ppm)   │           │          │
+  ├────┼──────────────┼─────────────┼───────────┼──────────┤
+  │ 1  │              │             │           │          │
+  │ 2  │              │             │           │          │
+  │... │              │             │           │          │
+  └────┴──────────────┴─────────────┴───────────┴──────────┘
+
+
+============================================================
+  3. PENGUJIAN SENSOR HC-SR04
+============================================================
+
+  File: firmware/test_hcsr04/test_hcsr04.ino
+
+  LANGKAH:
+  1. Upload program ke ESP32
+  2. Pasang sensor di posisi tetap, hadap ke objek
+  3. Ukur jarak manual dengan penggaris
+  4. Bandingkan dengan hasil sensor di Serial Monitor
+  5. Test pada beberapa jarak: 5, 10, 20, 30, 50 cm
+
+  TABEL PENGUJIAN:
+  ┌────┬──────────────┬─────────────┬───────────┬──────────┐
+  │ No │ Sensor HC04  │ Penggaris   │ Selisih   │ Error %  │
+  │    │ (cm)         │ (cm)        │           │          │
+  ├────┼──────────────┼─────────────┼───────────┼──────────┤
+  │ 1  │              │             │           │          │
+  │ 2  │              │             │           │          │
+  │... │              │             │           │          │
+  └────┴──────────────┴─────────────┴───────────┴──────────┘
+
+
+============================================================
+  4. PENGUJIAN LoRa E32 (TX dan RX)
+============================================================
+
+  File TX (Node):     firmware/test_lora_tx/test_lora_tx.ino
+  File RX (Gateway):  firmware/test_lora_rx/test_lora_rx.ino
+
+  LANGKAH:
+  1. Upload test_lora_rx.ino ke ESP32 Gateway, biarkan running
+  2. Upload test_lora_tx.ino ke ESP32 Node
+  3. Buka Serial Monitor di kedua device
+  4. Pindahkan Node ke jarak tertentu (misal 100m, 500m, 1000m)
+  5. Catat data selama 5-10 menit per jarak
+
+  TABEL PENGUJIAN PACKET LOSS:
+  ┌──────────┬──────────┬──────────┬──────────┬───────────┐
+  │ Jarak    │ Paket    │ Paket    │ Paket    │ Loss Rate │
+  │ (m)      │ Dikirim  │ Diterima │ Hilang   │ (%)       │
+  ├──────────┼──────────┼──────────┼──────────┼───────────┤
+  │ 50       │          │          │          │           │
+  │ 100      │          │          │          │           │
+  │ 250      │          │          │          │           │
+  │ 500      │          │          │          │           │
+  │ 1000     │          │          │          │           │
+  │ 2000     │          │          │          │           │
+  │ 3000     │          │          │          │           │
+  └──────────┴──────────┴──────────┴──────────┴───────────┘
+
+  TABEL DELAY TRANSMISI:
+  ┌──────────┬─────────────────┬─────────────────┐
+  │ Jarak    │ Rata-rata Delay │ Min/Max Delay   │
+  │ (m)      │ TX (ms)         │ TX (ms)         │
+  ├──────────┼─────────────────┼─────────────────┤
+  │ 50       │                 │                 │
+  │ 100      │                 │                 │
+  │ ...      │                 │                 │
+  └──────────┴─────────────────┴─────────────────┘
+
+  RUMUS:
+    Loss Rate = (Paket Hilang / Paket Dikirim) × 100%
+
+
+============================================================
+  CARA SAVE DATA DARI SERIAL MONITOR
+============================================================
+
+  Cara 1 — Copy Manual:
+    Klik kanan di Serial Monitor → Select All → Copy
+    Paste ke Excel, gunakan "Text to Columns" → Comma
+
+  Cara 2 — Pakai PuTTY (lebih baik):
+    1. Install PuTTY (gratis)
+    2. Connection type: Serial
+    3. Serial line: COM3 (sesuaikan port)
+    4. Speed: 115200
+    5. Session → Logging → All session output
+    6. Tentukan file log .csv
+    7. Open → data otomatis tersimpan
+
+  Cara 3 — Pakai Arduino IDE Serial Plotter:
+    Untuk visualisasi grafik real-time saja
+
+
+============================================================
+  TIPS PENGUJIAN UNTUK SKRIPSI
+============================================================
+
+  1. Lakukan minimal 10 sample per kondisi pengujian
+  2. Catat kondisi lingkungan (suhu ruang, kelembapan, dll)
+  3. Foto setup pengujian untuk dokumentasi
+  4. Hitung rata-rata dan standar deviasi
+  5. Analisis error % dan tampilkan dalam grafik
+  6. Untuk LoRa: test di outdoor (line of sight) dan
+     indoor/dengan halangan untuk perbandingan
+
+============================================================
+  HydroIoT — Anggito Alif Abimanyu
+  Universitas Komputer Indonesia
+============================================================

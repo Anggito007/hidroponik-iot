@@ -1,0 +1,12 @@
+# Temporary / System files
+.DS_Store
+Thumbs.db
+*.log
+.vscode/
+.idea/
+.gemini/
+
+# Node / Build artifacts
+node_modules/
+dist/
+build/

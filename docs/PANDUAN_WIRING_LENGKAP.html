@@ -1,0 +1,1055 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Panduan Wiring Lengkap - HydroIoT</title>
+    <style>
+        @media print {
+            body { font-size: 10pt; }
+            .page-break { page-break-before: always; }
+            .no-print { display: none; }
+        }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 210mm;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        h1 { color: #2c3e50; border-bottom: 3px solid #3498db; padding-bottom: 10px; }
+        h2 { color: #2980b9; margin-top: 30px; }
+        h3 { color: #27ae60; }
+        .warning {
+            background: #fff3cd;
+            border-left: 4px solid #ffc107;
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 4px;
+        }
+        .danger {
+            background: #f8d7da;
+            border-left: 4px solid #dc3545;
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 4px;
+        }
+        .success {
+            background: #d4edda;
+            border-left: 4px solid #28a745;
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 4px;
+        }
+        .info {
+            background: #d1ecf1;
+            border-left: 4px solid #17a2b8;
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 4px;
+        }
+        pre {
+            background: #f4f4f4;
+            padding: 15px;
+            border-radius: 5px;
+            overflow-x: auto;
+            font-family: 'Courier New', monospace;
+            font-size: 11px;
+            line-height: 1.4;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 15px 0;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 10px;
+            text-align: left;
+        }
+        th {
+            background: #3498db;
+            color: white;
+        }
+        tr:nth-child(even) {
+            background: #f2f2f2;
+        }
+        .toc {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 5px;
+            margin: 20px 0;
+        }
+        .toc ul {
+            list-style-type: none;
+            padding-left: 0;
+        }
+        .toc li {
+            margin: 8px 0;
+        }
+        .toc a {
+            text-decoration: none;
+            color: #2980b9;
+        }
+        .diagram {
+            background: #1a1a2e;
+            color: #00ff88;
+            padding: 20px;
+            border-radius: 5px;
+            font-family: 'Courier New', monospace;
+            white-space: pre;
+            overflow-x: auto;
+            margin: 15px 0;
+        }
+    </style>
+</head>
+<body>
+
+<h1>🔌 PANDUAN WIRING LENGKAP</h1>
+<h2>Sistem HydroIoT dengan ESP32 + Relay + LM2596</h2>
+<p><strong>Versi:</strong> 2.0 | <strong>Tanggal:</strong> Juli 2026</p>
+
+<div class="toc">
+    <h3>Daftar Isi</h3>
+    <ul>
+        <li><a href="#section1">1. Overview Sistem</a></li>
+        <li><a href="#section2">2. Komponen yang Dibutuhkan</a></li>
+        <li><a href="#section3">3. Distribusi Daya (Power Distribution)</a></li>
+        <li><a href="#section4">4. Penjelasan VCC vs JD-VCC</a></li>
+        <li><a href="#section5">5. Konfigurasi Wiring yang Direkomendasikan</a></li>
+        <li><a href="#section6">6. Wiring Ground (GND Bersama)</a></li>
+        <li><a href="#section7">7. Wiring Beban 12V (Pompa & Kipas)</a></li>
+        <li><a href="#section8">8. Masalah Umum & Solusi</a></li>
+        <li><a href="#section9">9. Best Practices & Tips</a></li>
+        <li><a href="#section10">10. Checklist Sebelum Nyala</a></li>
+    </ul>
+</div>
+
+<div class="page-break"></div>
+
+<h2 id="section1">1. Overview Sistem</h2>
+
+<p>Sistem HydroIoT menggunakan konfigurasi power sebagai berikut:</p>
+<ul>
+    <li><strong>PSU Utama:</strong> 12V DC</li>
+    <li><strong>Step-Down:</strong> LM2596 (12V → 5V untuk relay & ESP32)</li>
+    <li><strong>ESP32:</strong> Mikrokontroler utama</li>
+    <li><strong>Relay Module:</strong> 3-channel, 5V, active LOW dengan optocoupler</li>
+    <li><strong>Beban:</strong> Pompa air 12V, Pompa nutrisi 12V, Kipas 12V</li>
+</ul>
+
+<div class="diagram">
+═══════════════════════════════════════════════════════════════════
+                    ARSITEKTUR SISTEM DAYA
+═══════════════════════════════════════════════════════════════════
+
+    ┌─────────────┐
+    │  PSU 12V DC  │
+    │    (3A)      │
+    └──────┬──────┘
+           │
+           │ 12V
+           ├────────────────────────────────────────────────────┐
+           │                                                     │
+           │                                            ┌────────▼────────┐
+           │                                            │   LM2596        │
+           │                                            │  Step-Down      │
+           │                                            │  12V → 5V       │
+           │                                            └────────┬────────┘
+           │                                                     │
+           │                                                    5V
+           │                                                     │
+           │                    ┌────────────────────────────────┼────────────────────┐
+           │                    │                                │                    │
+           │                    │                    ┌───────────▼───────────┐        │
+           │                    │                    │                       │        │
+           │                    │                    │      ESP32            │        │
+           │                    │                    │   + Sensor/LoRa       │        │
+           │                    │                    │                       │        │
+           │                    │                    └───────────────────────┘        │
+           │                    │                                                     │
+           │                    │              ┌──────────────────────────────────────┘
+           │                    │              │
+           │                    │       ┌──────▼──────┐
+           │                    │       │ RELAY MODULE │
+           │                    │       │  (3-Channel) │
+           │                    │       └──────┬──────┘
+           │                    │              │
+           │                    │         COM/NO terminals
+           │                    │              │
+           │                    │    ┌─────────┼─────────┬─────────┐
+           │                    │    │         │         │         │
+           │                    │  ┌─▼─┐     ┌─▼─┐     ┌─▼─┐
+           │                    │  │P12V│     │P12V│     │F12V│
+           │                    │  │Pump│     │Nutr│     │Fan │
+           │                    │  └─┬─┘     └─┬─┘     └─┬─┘
+           │                    │    │         │         │
+           └────────────────────┴────┴─────────┴─────────┘
+                                        GND (Common)
+</div>
+
+<div class="page-break"></div>
+
+<h2 id="section2">2. Komponen yang Dibutuhkan</h2>
+
+<table>
+    <tr>
+        <th>No</th>
+        <th>Komponen</th>
+        <th>Spesifikasi</th>
+        <th>Qty</th>
+        <th>Fungsi</th>
+    </tr>
+    <tr>
+        <td>1</td>
+        <td>PSU (Power Supply)</td>
+        <td>12V DC, minimal 3A</td>
+        <td>1</td>
+        <td>Sumber daya utama</td>
+    </tr>
+    <tr>
+        <td>2</td>
+        <td>Step-Down Converter</td>
+        <td>LM2596 (12V → 5V)</td>
+        <td>1</td>
+        <td>Menurunkan tegangan untuk ESP32 & relay</td>
+    </tr>
+    <tr>
+        <td>3</td>
+        <td>ESP32 DevKit</td>
+        <td>WROOM-32</td>
+        <td>1</td>
+        <td>Mikrokontroler utama</td>
+    </tr>
+    <tr>
+        <td>4</td>
+        <td>Relay Module</td>
+        <td>3-channel, 5V, active LOW</td>
+        <td>1</td>
+        <td>Kontrol beban 12V</td>
+    </tr>
+    <tr>
+        <td>5</td>
+        <td>Pompa Air</td>
+        <td>12V DC</td>
+        <td>1</td>
+        <td>Pengisian air</td>
+    </tr>
+    <tr>
+        <td>6</td>
+        <td>Pompa Nutrisi</td>
+        <td>12V DC</td>
+        <td>1</td>
+        <td>Dosing nutrisi</td>
+    </tr>
+    <tr>
+        <td>7</td>
+        <td>Kipas</td>
+        <td>12V DC</td>
+        <td>1</td>
+        <td>Pendingin</td>
+    </tr>
+    <tr>
+        <td>8</td>
+        <td>Kabel & Konektor</td>
+        <td>AWG 22-18 (relay), AWG 24-22 (sinyal)</td>
+        <td>-</td>
+        <td>Koneksi antar komponen</td>
+    </tr>
+</table>
+
+<div class="page-break"></div>
+
+<h2 id="section3">3. Distribusi Daya (Power Distribution)</h2>
+
+<h3>3.1 Alur Daya dari PSU</h3>
+
+<div class="diagram">
+═══════════════════════════════════════════════════════════════════
+                   DISTRIBUSI DAYA 12V
+═══════════════════════════════════════════════════════════════════
+
+    PSU 12V (+) ──────────────────────────────────────────────────┐
+        │                                                         │
+        │  ┌──────────────────────────────────────────────────────┤
+        │  │                                                      │
+        │  │                    LM2596 Input                      │
+        │  │                         │                            │
+        │  │                    ┌────▼────┐                       │
+        │  │                    │  12V IN │                       │
+        │  │                    │ LM2596  │                       │
+        │  │                    │  5V OUT │                       │
+        │  │                    └────┬────┘                       │
+        │  │                         │                            │
+        │  │                         │ 5V                         │
+        │  │                         │                            │
+        │  │              ┌──────────┼──────────┐                 │
+        │  │              │          │          │                 │
+        │  │              │          │          │                 │
+        │  │         ┌────▼────┐ ┌───▼────┐ ┌──▼───┐            │
+        │  │         │ ESP32   │ │ Relay  │ │Relay │            │
+        │  │         │ VIN     │ │ VCC    │ │JD-VCC│            │
+        │  │         └─────────┘ └────────┘ └──────┘            │
+        │  │                                                      │
+        │  │              COM Relay 1, 2, 3                       │
+        │  │              (Pompa Air, Nutrisi, Kipas)             │
+        │  │                                                      │
+        │  └──────────────────────────────────────────────────────┘
+        │
+        │                                                         │
+        │                                                         │
+    PSU 12V (-) ──────────────────────────────────────────────────┘
+        │
+        │  GND BERSAMA (Common Ground)
+        │
+        ├── GND LM2596
+        ├── GND ESP32
+        ├── GND Relay (logic side)
+        ├── GND Relay (coil side)
+        ├── GND Pompa Air (-)
+        ├── GND Pompa Nutrisi (-)
+        └── GND Kipas (-)
+</div>
+
+<h3>3.2 Detail Distribusi 5V dari LM2596</h3>
+
+<div class="warning">
+    <strong>⚠️ PENTING:</strong> LM2596 harus bisa meng供应 minimal 1A untuk ESP32 + relay. Pastikan setting output = 5V sebelum digunakan!
+</div>
+
+<div class="diagram">
+═══════════════════════════════════════════════════════════════════
+              DISTRIBUSI 5V DARI LM2596
+═══════════════════════════════════════════════════════════════════
+
+                LM2596 Output (5V)
+                        │
+                        │
+        ┌───────────────┼───────────────┬───────────────┐
+        │               │               │               │
+        │               │               │               │
+   ┌────▼────┐    ┌─────▼─────┐   ┌─────▼─────┐   ┌───▼───┐
+   │  ESP32  │    │  RELAY    │   │  RELAY    │   │Other  │
+   │  VIN    │    │  VCC      │   │  JD-VCC   │   │5V dev │
+   │  (5V)   │    │  (logic)  │   │  (coil)   │   │       │
+   └────┬────┘    └─────┬─────┘   └─────┬─────┘   └───┬───┘
+        │               │               │               │
+        │               │               │               │
+   ┌────▼────┐    ┌─────▼─────┐   ┌─────▼─────┐   ┌───▼───┐
+   │  ESP32  │    │  RELAY    │   │  RELAY    │   │Other  │
+   │  GND    │    │  GND      │   │  GND      │   │GND    │
+   └─────────┘    └───────────┘   └───────────┘   └───────┘
+
+   CATATAN:
+   - ESP32 VIN = 5V dari LM2596
+   - Relay VCC = 5V untuk sirkuit optocoupler/logic (SEBELUM jumper)
+   - Relay JD-VCC = 5V untuk koil relay (SESUDAH jumper)
+</div>
+
+<div class="page-break"></div>
+
+<h2 id="section4">4. Penjelasan VCC vs JD-VCC</h2>
+
+<h3>4.1 Apa itu VCC dan JD-VCC?</h3>
+
+<div class="info">
+    <strong>💡 Info:</strong> Pada modul relay 5V dengan optocoupler, terdapat 2 jalur daya terpisah:
+    <ul>
+        <li><strong>VCC:</strong> Daya untuk sirkuit optocoupler dan driver transistor (logic side)</li>
+        <li><strong>JD-VCC:</strong> Daya untuk koil relay (coil side)</li>
+    </ul>
+</div>
+
+<table>
+    <tr>
+        <th>Pin</th>
+        <th>Fungsi</th>
+        <th>Tegangan</th>
+        <th>Arus</th>
+        <th>Catatan</th>
+    </tr>
+    <tr>
+        <td><strong>VCC</strong></td>
+        <td>Daya logic/optocoupler</td>
+        <td>3.3V - 5V</td>
+        <td>~10-20mA</td>
+        <td>Untuk LED optocoupler & transistor driver</td>
+    </tr>
+    <tr>
+        <td><strong>JD-VCC</strong></td>
+        <td>Daya koil relay</td>
+        <td>5V</td>
+        <td>~70-150mA per relay</td>
+        <td>Untuk medan magnet koil relay</td>
+    </tr>
+    <tr>
+        <td><strong>GND (logic)</strong></td>
+        <td>Ground sisi logic</td>
+        <td>0V</td>
+        <td>-</td>
+        <td>Harus sama dengan ESP32 GND</td>
+    </tr>
+    <tr>
+        <td><strong>GND (coil)</strong></td>
+        <td>Ground sisi koil</td>
+        <td>0V</td>
+        <td>-</td>
+        <td>Harus sama dengan GND logic</td>
+    </tr>
+</table>
+
+<h3>4.2 Jumper VCC-JD-VCC: Pasang atau Lepas?</h3>
+
+<div class="danger">
+    <strong>🚨 KRITIS:</strong> Jumper VCC-JD-VCC menentukan apakah sirkuit relay terisolasi atau tidak!
+</div>
+
+<h4>Opsi A: Jumper DIPASANG (Tidak Direkomendasikan)</h4>
+
+<pre>
+┌─────────────────────────────────────────────────────────────────┐
+│                    JUMPER DIPASANG                             │
+│                                                                 │
+│   ESP32 5V ──────┬──────┬──────┬──────┬──────┬──────┐         │
+│                   │      │      │      │      │      │         │
+│              ┌────▼───┐  │  ┌───▼──┐ ┌─▼───┐ │  ┌───▼───┐    │
+│              │ESP32   │  │  │Relay │ │Relay│ │  │Relay  │    │
+│              │VIN     │  │  │VCC   │ │JD-VCC│ │  │ (all) │    │
+│              └────────┘  │  └───┬──┘ └───┬──┘ │  └───┬───┘    │
+│                          │      │        │     │      │         │
+│   GND ───────────────────┴──────┴────────┴─────┴──────┘         │
+│                                                                 │
+│   ⚠️ MASALAH:                                                  │
+│   1. Tidak ada isolasi antara ESP32 dan koil relay             │
+│   2. Noise dari relay bisa mengganggu ESP32                    │
+│   3. Arus koil relay mengambil dari ESP32 VIN                  │
+│   4. Jika ESP32 crash, relay bisa nyala tiba-tiba              │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+</pre>
+
+<h4>Opsi B: Jumper DILEPAS (Direkomendasikan) ✓</h4>
+
+<pre>
+┌─────────────────────────────────────────────────────────────────┐
+│                    JUMPER DILEPAS                               │
+│                                                                 │
+│   ESP32 3.3V ────────────────────┬──────┬──────┐               │
+│                                  │      │      │               │
+│                             ┌────▼───┐  │  ┌───▼───┐          │
+│                             │Relay   │  │  │Relay  │          │
+│                             │VCC     │  │  │(logic)│          │
+│                             └────┬───┘  │  └───┬───┘          │
+│   GND (ESP32) ───────────────────┴──────┴──────┘               │
+│                                                                 │
+│   LM2596 5V ────────────────────┬──────┬──────┐               │
+│                                  │      │      │               │
+│                             ┌────▼───┐  │  ┌───▼───┐          │
+│                             │Relay   │  │  │Relay  │          │
+│                             │JD-VCC  │  │  │(coil) │          │
+│                             └────┬───┘  │  └───┬───┘          │
+│   GND (common) ─────────────────┴──────┴──────┘               │
+│                                                                 │
+│   ✅ KEUNGGULAN:                                               │
+│   1. Optocoupler mengisolasi ESP32 dari koil relay            │
+│   2. Noise relay tidak mengganggu ESP32                       │
+│   3. ESP32 hanya mengupply arus kecil (~10mA)                 │
+│   4. Lebih aman dan stabil                                    │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+</pre>
+
+<div class="page-break"></div>
+
+<h2 id="section5">5. Konfigurasi Wiring yang Direkomendasikan</h2>
+
+<div class="success">
+    <strong>✅ REKOMENDASI:</strong> Gunakan Opsi B (Jumper DILEPAS) dengan isolasi daya!
+</div>
+
+<h3>5.1 Wiring Lengkap (Jumper DILEPAS)</h3>
+
+<div class="diagram">
+═══════════════════════════════════════════════════════════════════
+         WIRING LENGKAP - JUMPER VCC-JD-VCC DILEPAS
+═══════════════════════════════════════════════════════════════════
+
+┌──────────────────────────────────────────────────────────────────┐
+│                          PSU 12V DC                              │
+│                         ┌─────────┐                              │
+│                         │  12V    │                              │
+│                         │   3A    │                              │
+│                         └────┬────┘                              │
+│                              │                                   │
+│                    (+12V)────┼────(-12V)                         │
+│                              │        │                          │
+│                              │        │ COMMON GND               │
+│                              │        │                          │
+└──────────────────────────────┼────────┼──────────────────────────┘
+                               │        │
+         ┌─────────────────────┼────────┼─────────────────────────┐
+         │                     │        │                         │
+         │                ┌────▼────┐   │                         │
+         │                │ LM2596  │   │                         │
+         │                │         │   │                         │
+         │                │ IN  OUT │   │                         │
+         │                │ 12V  5V │   │                         │
+         │                └────┬────┘   │                         │
+         │                     │        │                         │
+         │                    5V        │                         │
+         │                     │        │                         │
+         │                     │        │                         │
+         │    ┌────────────────┼────────┼─────────────────────┐  │
+         │    │                │        │                     │  │
+         │    │                │        │                     │  │
+         │    │           ┌────▼────┐   │                     │  │
+         │    │           │  ESP32  │   │                     │  │
+         │    │           │         │   │                     │  │
+         │    │           │ VIN=5V  │   │                     │  │
+         │    │           │ GND─────┼───┘                     │  │
+         │    │           │         │                         │  │
+         │    │           │ GPIO25──┼──── IN1 (Relay)         │  │
+         │    │           │ GPIO26──┼──── IN2 (Relay)         │  │
+         │    │           │ GPIO27──┼──── IN3 (Relay)         │  │
+         │    │           └─────────┘                         │  │
+         │    │                                               │  │
+         │    │  ┌────────────────────────────────────────┐   │  │
+         │    │  │          RELAY MODULE 3-CHANNEL         │   │  │
+         │    │  │                                        │   │  │
+         │    │  │  VCC (3.3V) ◄─── ESP32 3.3V            │   │  │
+         │    │  │  GND (logic) ◄─── ESP32 GND            │   │  │
+         │    │  │                                        │   │  │
+         │    │  │  JD-VCC (5V) ◄─── LM2596 5V            │◄──┘  │
+         │    │  │  GND (coil) ◄─── LM2596 GND            │   │  │
+         │    │  │                                        │   │  │
+         │    │  │  IN1 ◄──── GPIO25 (Pompa Air)          │   │  │
+         │    │  │  IN2 ◄──── GPIO26 (Pompa Nutrisi)      │   │  │
+         │    │  │  IN3 ◄──── GPIO27 (Kipas)              │   │  │
+         │    │  │                                        │   │  │
+         │    │  │  COM1 ◄──── (+12V dari PSU)             │   │  │
+         │    │  │  COM2 ◄──── (+12V dari PSU)             │   │  │
+         │    │  │  COM3 ◄──── (+12V dari PSU)             │   │  │
+         │    │  │                                        │   │  │
+         │    │  │  NO1 ────► (+) Pompa Air                │   │  │
+         │    │  │  NO2 ────► (+) Pompa Nutrisi            │   │  │
+         │    │  │  NO3 ────► (+) Kipas                    │   │  │
+         │    │  └────────────────────────────────────────┘   │  │
+         │    │                                               │  │
+         │    │   (-) Pompa ──┐                               │  │
+         │    │   (-) Kipas ──┼──► GND PSU (COMMON)           │  │
+         │    └───────────────┘                               │  │
+         │                                                    │  │
+         └────────────────────────────────────────────────────┘  │
+                                                                 │
+</div>
+
+<h3>5.2 Penjelasan Setiap Koneksi</h3>
+
+<table>
+    <tr>
+        <th>Dari</th>
+        <th>Ke</th>
+        <th>Kabel</th>
+        <th>Keterangan</th>
+    </tr>
+    <tr>
+        <td>PSU 12V (+)</td>
+        <td>LM2596 Input (+)</td>
+        <td>Kabel tebal (AWG 18)</td>
+        <td>Input daya step-down</td>
+    </tr>
+    <tr>
+        <td>PSU 12V (+)</td>
+        <td>Relay COM1, COM2, COM3</td>
+        <td>Kabel tebal (AWG 18)</td>
+        <td>Daya beban 12V</td>
+    </tr>
+    <tr>
+        <td>PSU 12V (-)</td>
+        <td>LM2596 Input (-)</td>
+        <td>Kabel tebal (AWG 18)</td>
+        <td>Ground utama</td>
+    </tr>
+    <tr>
+        <td>LM2596 Output (+)</td>
+        <td>ESP32 VIN</td>
+        <td>Kabel standar (AWG 22)</td>
+        <td>Daya ESP32</td>
+    </tr>
+    <tr>
+        <td>LM2596 Output (+)</td>
+        <td>Relay JD-VCC</td>
+        <td>Kabel standar (AWG 22)</td>
+        <td>Daya koil relay</td>
+    </tr>
+    <tr>
+        <td>ESP32 3.3V</td>
+        <td>Relay VCC</td>
+        <td>Kabel tipis (AWG 24)</td>
+        <td>Daya logic relay</td>
+    </tr>
+    <tr>
+        <td>ESP32 GND</td>
+        <td>Relay GND (logic)</td>
+        <td>Kabel tipis (AWG 24)</td>
+        <td>Ground logic</td>
+    </tr>
+    <tr>
+        <td>LM2596 GND</td>
+        <td>Relay GND (coil)</td>
+        <td>Kabel standar (AWG 22)</td>
+        <td>Ground koil</td>
+    </tr>
+    <tr>
+        <td>ESP32 GPIO25</td>
+        <td>Relay IN1</td>
+        <td>Kabel tipis (AWG 24)</td>
+        <td>Sinyal kontrol Relay 1</td>
+    </tr>
+    <tr>
+        <td>ESP32 GPIO26</td>
+        <td>Relay IN2</td>
+        <td>Kabel tipis (AWG 24)</td>
+        <td>Sinyal kontrol Relay 2</td>
+    </tr>
+    <tr>
+        <td>ESP32 GPIO27</td>
+        <td>Relay IN3</td>
+        <td>Kabel tipis (AWG 24)</td>
+        <td>Sinyal kontrol Relay 3</td>
+    </tr>
+    <tr>
+        <td>Relay NO1</td>
+        <td>Pompa Air (+)</td>
+        <td>Kabel tebal (AWG 18)</td>
+        <td>Switching beban</td>
+    </tr>
+    <tr>
+        <td>Relay NO2</td>
+        <td>Pompa Nutrisi (+)</td>
+        <td>Kabel tebal (AWG 18)</td>
+        <td>Switching beban</td>
+    </tr>
+    <tr>
+        <td>Relay NO3</td>
+        <td>Kipas (+)</td>
+        <td>Kabel tebal (AWG 18)</td>
+        <td>Switching beban</td>
+    </tr>
+    <tr>
+        <td>Pompa Air (-)</td>
+        <td>PSU 12V (-)</td>
+        <td>Kabel tebal (AWG 18)</td>
+        <td>Ground beban</td>
+    </tr>
+    <tr>
+        <td>Pompa Nutrisi (-)</td>
+        <td>PSU 12V (-)</td>
+        <td>Kabel tebal (AWG 18)</td>
+        <td>Ground beban</td>
+    </tr>
+    <tr>
+        <td>Kipas (-)</td>
+        <td>PSU 12V (-)</td>
+        <td>Kabel tebal (AWG 18)</td>
+        <td>Ground beban</td>
+    </tr>
+</table>
+
+<div class="page-break"></div>
+
+<h2 id="section6">6. Wiring Ground (GND Bersama)</h2>
+
+<h3>6.1 Mengapa Harus GND Bersama?</h3>
+
+<div class="info">
+    <strong>💡 Prinsip:</strong> Semua ground harus terhubung ke satu titik (common ground) agar referensi tegangan sama untuk semua komponen.
+</div>
+
+<h3>6.2 Diagram Common Ground</h3>
+
+<div class="diagram">
+═══════════════════════════════════════════════════════════════════
+                   COMMON GROUND (GND BERSAMA)
+═══════════════════════════════════════════════════════════════════
+
+                         PSU 12V (-)
+                              │
+                              │
+                    ┌─────────┴─────────┐
+                    │                   │
+                    │    TITIK GND      │
+                    │    UTAMA          │
+                    │                   │
+                    └─────────┬─────────┘
+                              │
+          ┌───────────────────┼───────────────────┐
+          │                   │                   │
+          │                   │                   │
+     ┌────▼────┐         ┌────▼────┐         ┌────▼────┐
+     │ LM2596  │         │  ESP32  │         │  RELAY  │
+     │   GND   │         │   GND   │         │   GND   │
+     └─────────┘         └─────────┘         └─────────┘
+          │                   │                   │
+          │                   │                   │
+     ┌────▼────┐         ┌────▼────┐         ┌────▼────┐
+     │  LOAD   │         │  LOAD   │         │  LOAD   │
+     │  (-)    │         │  (-)    │         │  (-)    │
+     │ Pompa   │         │ Kipas   │         │ Sensor  │
+     └─────────┘         └─────────┘         └─────────┘
+
+
+   CATATAN:
+   - Semua GND terhubung ke PSU 12V (-)
+   - LM2596 GND = ESP32 GND = Relay GND = PSU GND
+   - JANGAN buat GND terpisah (bisa menyebabkan noise)
+</div>
+
+<h3>6.3 Tips Wiring GND</h3>
+
+<div class="warning">
+    <strong>⚠️ Penting:</strong>
+    <ul>
+        <li>Gunakan kabel yang cukup tebal untuk GND (AWG 18 atau lebih tebal)</li>
+        <li>Hindari GND loop (lingkaran ground yang tidak perlu)</li>
+        <li>Pastikan semua koneksi GND kencang dan tidak longgar</li>
+        <li>Gunakan terminal block atau solder untuk koneksi yang reliable</li>
+    </ul>
+</div>
+
+<div class="page-break"></div>
+
+<h2 id="section7">7. Wiring Beban 12V (Pompa & Kipas)</h2>
+
+<h3>7.1 Konfigurasi Relay untuk Beban DC</h3>
+
+<div class="diagram">
+═══════════════════════════════════════════════════════════════════
+              WIRING RELAY UNTUK BEBAN 12V DC
+═══════════════════════════════════════════════════════════════════
+
+    PSU 12V (+) ──────────────────────────────────────────────────┐
+        │                                                         │
+        │         ┌───────────────────────────────────────────────┤
+        │         │                                               │
+        │    ┌────┴────┐                                     ┌────┴────┐
+        │    │  RELAY  │                                     │  RELAY  │
+        │    │  COM1   │                                     │  COM2   │
+        │    └────┬────┘                                     └────┬────┘
+        │         │                                               │
+        │    ┌────▼────┐                                     ┌────▼────┐
+        │    │   NO1   │                                     │   NO2   │
+        │    └────┬────┘                                     └────┬────┘
+        │         │                                               │
+        │         │                                               │
+        │    ┌────▼────────────┐                          ┌───────▼─────────┐
+        │    │   POMPA AIR     │                          │  POMPA NUTRISI  │
+        │    │   12V DC        │                          │    12V DC       │
+        │    │                 │                          │                 │
+        │    │    (+) ◄────────┤                          ├────────► (+)    │
+        │    │    (-) ─────────┤                          ├─────────► (-)   │
+        │    └─────────────────┘                          └─────────────────┘
+        │         │                                               │
+        │         │                                               │
+        │         └───────────────────┬───────────────────────────┘
+        │                             │
+        │                             │
+    PSU 12V (-) ──────────────────────┘
+
+
+   KONFIGURASI:
+   - COM (Common) → ke PSU 12V (+)
+   - NO (Normally Open) → ke Beban (+)
+   - NC (Normally Closed) → tidak dipakai
+   - Beban (-) → ke PSU 12V (-)
+
+   CATATAN:
+   - Gunakan terminal NO (Normally Open)
+   - Relay OFF = Pompa/Kipas MATI
+   - Relay ON = Pompa/Kipas NYALA
+   - Active LOW: GPIO LOW = Relay ON
+</div>
+
+<h3>7.2 Flyback Diode (Opsional tapi Direkomendasikan)</h3>
+
+<div class="warning">
+    <strong>⚠️ Untuk motor DC:</strong> Pasang flyback diode (1N4007) paralel dengan terminal COM-NO untuk melindungi relay dari voltage spike saat motor dimatikan.
+</div>
+
+<pre>
+                    RELAY TERMINALS
+                    ┌─────────────┐
+                    │             │
+    PSU 12V (+) ───►│ COM    NO   │───► (+) Motor
+                    │             │
+                    │      ┌──┐   │
+                    │      │D │   │  ← Flyback Diode (1N4007)
+                    │      │▲ │   │     Anode ke NO, Cathode ke COM
+                    │      └──┘   │
+                    └─────────────┘
+</pre>
+
+<div class="page-break"></div>
+
+<h2 id="section8">8. Masalah Umum & Solusi</h2>
+
+<table>
+    <tr>
+        <th>Masalah</th>
+        <th>Penyebab</th>
+        <th>Solusi</th>
+    </tr>
+    <tr>
+        <td><strong>ESP32 Reset Random</strong></td>
+        <td>Noise dari relay mengganggu power ESP32</td>
+        <td>
+            <ul>
+                <li>Lepas jumper VCC-JD-VCC</li>
+                <li>Pasang kapasitor 100µF di VIN ESP32</li>
+                <li>Gunakan power supply terpisah untuk relay</li>
+            </ul>
+        </td>
+    </tr>
+    <tr>
+        <td><strong>Relay Tidak Bisa Switch</strong></td>
+        <td>Arus tidak cukup atau koneksi longgar</td>
+        <td>
+            <ul>
+                <li>Cek koneksi JD-VCC ke 5V</li>
+                <li>Pastikan GND terhubung dengan baik</li>
+                <li>Uk tegangan di JD-VCC (harus 5V)</li>
+            </ul>
+        </td>
+    </tr>
+    <tr>
+        <td><strong>Relay Selalu ON</strong></td>
+        <td>Sinyal control salah atau pull-up/internal</td>
+        <td>
+            <ul>
+                <li>Cek apakah active LOW atau HIGH</li>
+                <li>Pastikan GPIO diatur ke OUTPUT</li>
+                <li>Set GPIO HIGH untuk OFF (active LOW)</li>
+            </ul>
+        </td>
+    </tr>
+    <tr>
+        <td><strong>LoRa Tidak Stabil</strong></td>
+        <td>Noise EMI dari kabel relay</td>
+        <td>
+            <ul>
+                <li>Jauhkan antena LoRa dari kabel relay</li>
+                <li>Gunakan kabel shielded untuk LoRa</li>
+                <li>Pasang kapasitor 100nF di VCC LoRa</li>
+            </ul>
+        </td>
+    </tr>
+    <tr>
+        <td><strong>Sensor TDS Noise</strong></td>
+        <td>Ground loop atau noise power</td>
+        <td>
+            <ul>
+                <li>Pastikan semua GND bersama</li>
+                <li>Pasang kapasitor 10µF di VCC sensor</li>
+                <li>Gunakan kabel twisted pair untuk analog</li>
+            </ul>
+        </td>
+    </tr>
+</table>
+
+<div class="page-break"></div>
+
+<h2 id="section9">9. Best Practices & Tips</h2>
+
+<h3>9.1 Noise Reduction</h3>
+
+<div class="diagram">
+═══════════════════════════════════════════════════════════════════
+                   NOISE REDUCTION TECHNIQUES
+═══════════════════════════════════════════════════════════════════
+
+   1. KAPASITOR DECOUPLING
+   ─────────────────────────
+   - 100µF electrolytic di VIN ESP32
+   - 100nF ceramic di VCC relay
+   - 10µF di VCC sensor analog
+
+   2. FLYBACK DIODE
+   ─────────────────────────
+   - 1N4007 paralel dengan koil relay
+   - Anode ke NO/NC, Cathode ke COM
+   - Melindungi dari voltage spike
+
+   3. SEPARASI DAYA
+   ─────────────────────────
+   - Relay coil: LM2596 5V
+   - Relay logic: ESP32 3.3V
+   - Sensor: ESP32 3.3V/5V
+
+   4. LAYOUT KABEL
+   ─────────────────────────
+   - Pisahkan kabel power dari sinyal
+   - Minimal 5cm jarak antara kabel relay dan LoRa
+   - Gunakan kabel twisted pair untuk sinyal analog
+</div>
+
+<h3>9.2 Tips Wiring</h3>
+
+<div class="success">
+    <strong>✅ Best Practices:</strong>
+    <ul>
+        <li><strong>Kabel:</strong> Gunakan kabel berwarna berbeda (merah=VCC, hitam=GND, lain=sinyal)</li>
+        <li><strong>Koneksi:</strong> Gunakan terminal block atau solder, hindari breadboard untuk produksi</li>
+        <li><strong>Label:</strong> Beri label pada setiap kabel dan terminal</li>
+        <li><strong>Dokumentasi:</strong> Foto semua wiring sebelum ditutup</li>
+        <li><strong>Testing:</strong> Test satu per satu komponen sebelum digabung</li>
+        <li><strong>Safety:</strong> Selalu matikan PSU saat modifikasi wiring</li>
+    </ul>
+</div>
+
+<h3>9.3 Kapasitor yang Direkomendasikan</h3>
+
+<table>
+    <tr>
+        <th>Lokasi</th>
+        <th>Tipe</th>
+        <th>Nilai</th>
+        <th>Fungsi</th>
+    </tr>
+    <tr>
+        <td>ESP32 VIN</td>
+        <td>Electrolytic</td>
+        <td>100µF / 16V</td>
+        <td>Filter noise low frequency</td>
+    </tr>
+    <tr>
+        <td>ESP32 VIN</td>
+        <td>Ceramic</td>
+        <td>100nF</td>
+        <td>Filter noise high frequency</td>
+    </tr>
+    <tr>
+        <td>Relay JD-VCC</td>
+        <td>Ceramic</td>
+        <td>100nF</td>
+        <td>Filter switching noise</td>
+    </tr>
+    <tr>
+        <td>Sensor VCC</td>
+        <td>Electrolytic</td>
+        <td>10µF / 10V</td>
+        <td>Stabilisasi tegangan sensor</td>
+    </tr>
+    <tr>
+        <td>LoRa VCC</td>
+        <td>Ceramic</td>
+        <td>100nF</td>
+        <td>Filter noise untuk komunikasi</td>
+    </tr>
+</table>
+
+<div class="page-break"></div>
+
+<h2 id="section10">10. Checklist Sebelum Nyala</h2>
+
+<div class="success">
+    <strong>✅ Checklist Lengkap:</strong>
+</div>
+
+<table>
+    <tr>
+        <th>✓</th>
+        <th>Item</th>
+        <th>Catatan</th>
+    </tr>
+    <tr>
+        <td>☐</td>
+        <td>Jumper VCC-JD-VCC DILEPAS</td>
+        <td>Kedua modul relay harus dilepas</td>
+    </tr>
+    <tr>
+        <td>☐</td>
+        <td>ESP32 VCC ke Relay VCC (logic)</td>
+        <td>3.3V dari ESP32</td>
+    </tr>
+    <tr>
+        <td>☐</td>
+        <td>LM2596 ke Relay JD-VCC (coil)</td>
+        <td>5V dari LM2596</td>
+    </tr>
+    <tr>
+        <td>☐</td>
+        <td>Semua GND terhubung</td>
+        <td>ESP32, Relay, LM2596, PSU</td>
+    </tr>
+    <tr>
+        <td>☐</td>
+        <td>COM relay ke PSU 12V (+)</td>
+        <td>Untuk beban pompa/kipas</td>
+    </tr>
+    <tr>
+        <td>☐</td>
+        <td>NO relay ke Beban (+)</td>
+        <td>Pompa & kipas</td>
+    </tr>
+    <tr>
+        <td>☐</td>
+        <td>Beban (-) ke PSU 12V (-)</td>
+        <td>Ground beban</td>
+    </tr>
+    <tr>
+        <td>☐</td>
+        <td>GPIO relay ke IN1/IN2/IN3</td>
+        <td>GPIO 25, 26, 27</td>
+    </tr>
+    <tr>
+        <td>☐</td>
+        <td>LoRa VCC ke 3.3V</td>
+        <td>BUKAN 5V!</td>
+    </tr>
+    <tr>
+        <td>☐</td>
+        <td>LM2596 output = 5V</td>
+        <td>Uk sebelum digunakan</td>
+    </tr>
+    <tr>
+        <td>☐</td>
+        <td>Kabel tidak ada yang short</td>
+        <td>Cek dengan multimeter</td>
+    </tr>
+    <tr>
+        <td>☐</td>
+        <td>Semua solder kencang</td>
+        <td>Tidak ada yang loose</td>
+    </tr>
+    <tr>
+        <td>☐</td>
+        <td>Antena LoRa terpasang</td>
+        <td>Jangan nyalakan tanpa antena!</td>
+    </tr>
+    <tr>
+        <td>☐</td>
+        <td>Firmware sudah diupload</td>
+        <td>Cek Serial Monitor</td>
+    </tr>
+</table>
+
+<div class="info">
+    <strong>💡 Tips Final:</strong>
+    <ul>
+        <li>Nyalakan PSU tanpa beban terlebih dahulu</li>
+        <li>Uk tegangan di semua titik sebelum pasang beban</li>
+        <li>Test relay satu per satu dari Serial Monitor</li>
+        <li>Jika ada masalah, matikan PSU dan cek wiring</li>
+    </ul>
+</div>
+
+<hr>
+
+<p style="text-align: center; color: #666; margin-top: 50px;">
+    <strong>HydroIoT System</strong> | Panduan Wiring Lengkap v2.0<br>
+    Dokumen ini dapat dicetak ke PDF dari browser (Ctrl+P → Save as PDF)
+</p>
+
+</body>
+</html>
