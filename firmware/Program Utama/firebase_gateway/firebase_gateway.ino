@@ -422,43 +422,28 @@ void processLoRa(char* msg) {
     pushSensorToFirebase(node);
   }
 
-  // ── Auto-Sync Feedback Loop ──
-  // Bandingkan status fisik relay Node vs perintah Web (Firebase)
+  // ── Auto-Sync Feedback Loop (RAM-based, 0ms blocking) ──
+  // Bandingkan status fisik relay Node vs perintah Web (dari RAM relayTrack)
   // Jika tidak cocok, kirim ulang CMD secara otomatis
-  if (nodeMode[node] == "manual" && wifiOk) {
-    char path[32];
-    snprintf(path, sizeof(path), "relays/node%d", node);
-    String resp = firebaseGet(path);
-    if (resp.length() > 0 && resp != "null") {
-      StaticJsonDocument<128> doc;
-      if (deserializeJson(doc, resp) == DeserializationError::Ok) {
-        int webR1 = doc["r1"] ? 1 : 0;
-        int webR2 = doc["r2"] ? 1 : 0;
+  if (nodeMode[node] == "manual" && relayTrack[node].initialized) {
+    RelayTrack& rt = relayTrack[node];
 
-        // Sync Relay 1: Web minta ON tapi fisik Node masih OFF (atau sebaliknya)
-        if (webR1 != n.r1) {
-          char cmd[30];
-          snprintf(cmd, sizeof(cmd), "CMD:%d:R1:%d", node, webR1);
-          for (int retry = 0; retry < 3; retry++) {
-            e32.sendFixedMessage(0x00, node, LORA_CHAN, cmd);
-            if (retry < 2) delay(500);
-          }
-          Serial.printf("[SYNC] N%d R1: web=%d fisik=%d → kirim ulang CMD (3x)\n",
-            node, webR1, n.r1);
-        }
+    // Sync Relay 1: Web minta ON tapi fisik Node masih OFF (atau sebaliknya)
+    if (rt.r1 != n.r1) {
+      char cmd[30];
+      snprintf(cmd, sizeof(cmd), "CMD:%d:R1:%d", node, rt.r1);
+      e32.sendFixedMessage(0x00, node, LORA_CHAN, cmd);
+      Serial.printf("[SYNC] N%d R1: web=%d fisik=%d → kirim ulang CMD\n",
+        node, rt.r1, n.r1);
+    }
 
-        // Sync Relay 2: Web minta ON tapi fisik Node masih OFF (atau sebaliknya)
-        if (webR2 != n.r2) {
-          char cmd[30];
-          snprintf(cmd, sizeof(cmd), "CMD:%d:R2:%d", node, webR2);
-          for (int retry = 0; retry < 3; retry++) {
-            e32.sendFixedMessage(0x00, node, LORA_CHAN, cmd);
-            if (retry < 2) delay(500);
-          }
-          Serial.printf("[SYNC] N%d R2: web=%d fisik=%d → kirim ulang CMD (3x)\n",
-            node, webR2, n.r2);
-        }
-      }
+    // Sync Relay 2: Web minta ON tapi fisik Node masih OFF (atau sebaliknya)
+    if (rt.r2 != n.r2) {
+      char cmd[30];
+      snprintf(cmd, sizeof(cmd), "CMD:%d:R2:%d", node, rt.r2);
+      e32.sendFixedMessage(0x00, node, LORA_CHAN, cmd);
+      Serial.printf("[SYNC] N%d R2: web=%d fisik=%d → kirim ulang CMD\n",
+        node, rt.r2, n.r2);
     }
   }
 }
