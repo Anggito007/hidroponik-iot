@@ -90,6 +90,8 @@ unsigned long lastModePoll  = 0;
 unsigned long lastWatchdog  = 0;
 unsigned long lastWifiCheck = 0;
 unsigned long lastHistory[4] = {0, 0, 0, 0};
+unsigned long lastCmdTime[4] = {0, 0, 0, 0};  // Waktu terakhir kirim CMD/SETMODE
+unsigned long lastLossTime[4] = {0, 0, 0, 0}; // Waktu terakhir terjadi packet loss
 
 // Per-node state
 struct NodeState {
@@ -113,6 +115,7 @@ struct NodeState {
   int payloadSize;             // Ukuran payload terakhir (byte)
   uint32_t prevSeen;           // millis() saat paket sebelumnya diterima
   char lastLost[16];           // Nomor paket hilang terakhir (string)
+  char lossCause[16];          // Penyebab paket hilang (relay/collision/jarak)
 };
 NodeState ns[4];  // index 2 and 3 used
 
@@ -141,7 +144,7 @@ bool firebasePut(const char* path, const String& jsonData) {
   String url = String(FIREBASE_URL) + "/" + path + ".json";
   http.begin(client, url);
   http.addHeader("Content-Type", "application/json");
-  http.setTimeout(5000);
+  http.setTimeout(2000);
 
   int code = http.PUT(jsonData);
   http.end();
@@ -161,7 +164,7 @@ bool firebasePost(const char* path, const String& jsonData) {
   String url = String(FIREBASE_URL) + "/" + path + ".json";
   http.begin(client, url);
   http.addHeader("Content-Type", "application/json");
-  http.setTimeout(5000);
+  http.setTimeout(2000);
 
   int code = http.POST(jsonData);  // POST = Firebase push (auto-generate key)
   http.end();
@@ -180,7 +183,7 @@ String firebaseGet(const char* path) {
   HTTPClient http;
   String url = String(FIREBASE_URL) + "/" + path + ".json";
   http.begin(client, url);
-  http.setTimeout(5000);
+  http.setTimeout(2000);
 
   int code = http.GET();
   String payload = "";
@@ -283,6 +286,9 @@ void pushSensorToFirebase(int node) {
     if (strlen(n.lastLost) > 0) {
       qosDoc["last_lost"] = n.lastLost;
     }
+    if (strlen(n.lossCause) > 0) {
+      qosDoc["loss_cause"] = n.lossCause;
+    }
     qosDoc["timestamp_ms"] = tsMs;
 
     String qosJson;
@@ -324,6 +330,20 @@ void processLoRa(char* msg) {
   n.dataReady  = true;
 
   // Calculate packet loss rate from sequence gaps
+  // Deteksi Node Reboot: jika seq baru lebih kecil dari lastSeq, Node di-reset/reboot
+  if (n.lastSeq > 0 && n.seq < n.lastSeq) {
+    Serial.printf("[REBOOT] N%d: seq %d < lastSeq %d → Node reboot detected, resetting QoS\n",
+      node, n.seq, n.lastSeq);
+    n.lastSeq = 0;
+    n.lostPackets = 0;
+    n.totalReceived = 0;
+    n.totalDelay = 0;
+    n.avgDelay = 0;
+    n.packetLoss = 0;
+    n.prevSeen = 0;
+    memset(n.lastLost, 0, sizeof(n.lastLost));
+    memset(n.lossCause, 0, sizeof(n.lossCause));
+  }
   if (n.lastSeq > 0 && n.seq > n.lastSeq + 1) {
     int gap = n.seq - n.lastSeq - 1;
     n.lostPackets += gap;
@@ -333,7 +353,27 @@ void processLoRa(char* msg) {
     } else {
       snprintf(n.lastLost, sizeof(n.lastLost), "#%d-#%d", n.lastSeq + 1, n.seq - 1);
     }
-    Serial.printf("[LOSS] N%d: Paket %s Hilang! (gap:%d)\n", node, n.lastLost, gap);
+
+    // ── Klasifikasi Penyebab Paket Hilang ──
+    unsigned long now = millis();
+    lastLossTime[node] = now;
+    int otherNode = (node == 2) ? 3 : 2;
+
+    if (lastCmdTime[node] > 0 && (now - lastCmdTime[node] < 10000)) {
+      // Paket hilang < 10 detik setelah relay/mode CMD dikirim
+      strncpy(n.lossCause, "relay", sizeof(n.lossCause));
+    } else if (lastLossTime[otherNode] > 0 && (now - lastLossTime[otherNode] < 5000)) {
+      // Node lain juga kehilangan paket dalam 5 detik terakhir
+      strncpy(n.lossCause, "collision", sizeof(n.lossCause));
+      // Update juga penyebab node lain menjadi collision
+      strncpy(ns[otherNode].lossCause, "collision", sizeof(ns[otherNode].lossCause));
+    } else {
+      // Default: gangguan jarak / penghalang
+      strncpy(n.lossCause, "jarak", sizeof(n.lossCause));
+    }
+
+    Serial.printf("[LOSS] N%d: Paket %s Hilang! (gap:%d, sebab:%s)\n",
+      node, n.lastLost, gap, n.lossCause);
   }
   n.lastSeq = n.seq;
 
@@ -381,6 +421,46 @@ void processLoRa(char* msg) {
   if (wifiOk) {
     pushSensorToFirebase(node);
   }
+
+  // ── Auto-Sync Feedback Loop ──
+  // Bandingkan status fisik relay Node vs perintah Web (Firebase)
+  // Jika tidak cocok, kirim ulang CMD secara otomatis
+  if (nodeMode[node] == "manual" && wifiOk) {
+    char path[32];
+    snprintf(path, sizeof(path), "relays/node%d", node);
+    String resp = firebaseGet(path);
+    if (resp.length() > 0 && resp != "null") {
+      StaticJsonDocument<128> doc;
+      if (deserializeJson(doc, resp) == DeserializationError::Ok) {
+        int webR1 = doc["r1"] ? 1 : 0;
+        int webR2 = doc["r2"] ? 1 : 0;
+
+        // Sync Relay 1: Web minta ON tapi fisik Node masih OFF (atau sebaliknya)
+        if (webR1 != n.r1) {
+          char cmd[30];
+          snprintf(cmd, sizeof(cmd), "CMD:%d:R1:%d", node, webR1);
+          for (int retry = 0; retry < 3; retry++) {
+            e32.sendFixedMessage(0x00, node, LORA_CHAN, cmd);
+            if (retry < 2) delay(500);
+          }
+          Serial.printf("[SYNC] N%d R1: web=%d fisik=%d → kirim ulang CMD (3x)\n",
+            node, webR1, n.r1);
+        }
+
+        // Sync Relay 2: Web minta ON tapi fisik Node masih OFF (atau sebaliknya)
+        if (webR2 != n.r2) {
+          char cmd[30];
+          snprintf(cmd, sizeof(cmd), "CMD:%d:R2:%d", node, webR2);
+          for (int retry = 0; retry < 3; retry++) {
+            e32.sendFixedMessage(0x00, node, LORA_CHAN, cmd);
+            if (retry < 2) delay(500);
+          }
+          Serial.printf("[SYNC] N%d R2: web=%d fisik=%d → kirim ulang CMD (3x)\n",
+            node, webR2, n.r2);
+        }
+      }
+    }
+  }
 }
 
 // ════════════════════════════════════════════════════════════
@@ -409,18 +489,26 @@ void pollRelays() {
       rt.initialized = true;
     }
 
-    // Send LoRa command if state changed
+    // Send LoRa command if state changed (with retry for reliability)
     char cmd[30];
     if (r1 != rt.r1p) {
       snprintf(cmd, sizeof(cmd), "CMD:%d:R1:%d", node, r1);
-      e32.sendFixedMessage(0x00, node, LORA_CHAN, cmd);
-      Serial.printf("[Relay] %s\n", cmd);
+      for (int retry = 0; retry < 3; retry++) {
+        e32.sendFixedMessage(0x00, node, LORA_CHAN, cmd);
+        if (retry < 2) delay(500);  // Jeda 500ms antar retry
+      }
+      Serial.printf("[Relay] %s (3x retry)\n", cmd);
+      lastCmdTime[node] = millis();
       rt.r1p = r1;
     }
     if (r2 != rt.r2p) {
       snprintf(cmd, sizeof(cmd), "CMD:%d:R2:%d", node, r2);
-      e32.sendFixedMessage(0x00, node, LORA_CHAN, cmd);
-      Serial.printf("[Relay] %s\n", cmd);
+      for (int retry = 0; retry < 3; retry++) {
+        e32.sendFixedMessage(0x00, node, LORA_CHAN, cmd);
+        if (retry < 2) delay(500);  // Jeda 500ms antar retry
+      }
+      Serial.printf("[Relay] %s (3x retry)\n", cmd);
+      lastCmdTime[node] = millis();
       rt.r2p = r2;
     }
   }
@@ -447,11 +535,16 @@ void pollMode() {
       Serial.printf("[Mode] Node%d: %s → %s\n", node,
         oldMode.c_str(), resp.c_str());
 
-      // Send SETMODE to node via LoRa
+      // Send SETMODE to node via LoRa (3x retry for reliability)
       char cmd[30];
       int modeVal = (resp == "manual") ? 1 : 0;
       snprintf(cmd, sizeof(cmd), "SETMODE:%d:%d", node, modeVal);
-      e32.sendFixedMessage(0x00, node, LORA_CHAN, cmd);
+      for (int retry = 0; retry < 3; retry++) {
+        e32.sendFixedMessage(0x00, node, LORA_CHAN, cmd);
+        if (retry < 2) delay(500);
+      }
+      Serial.printf("[Mode] %s (3x retry)\n", cmd);
+      lastCmdTime[node] = millis();
 
       // If switching to manual, reset relay tracking
       if (resp == "manual") {

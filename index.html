@@ -739,6 +739,27 @@
         lossEl.className    = cls;
       }
       if (seenEl && timestamp) seenEl.textContent = timestamp;
+
+      // Opsi B: Reset kartu sensor ke '—' saat Node Offline
+      if (!online) {
+        setText(`lastUpdate${nodeNum}`, "Update: Offline (Terputus)");
+        setText(`seqInfo${nodeNum}`, "Paket: —");
+
+        setText(`n${nodeNum}-temp-val`, "—");
+        setText(`n${nodeNum}-temp-status`, "Offline 🔴");
+        const tBar = document.getElementById(`n${nodeNum}-temp-bar`);
+        if (tBar) tBar.style.width = '0%';
+
+        setText(`n${nodeNum}-hum-val`, "—");
+        setText(`n${nodeNum}-hum-status`, "Offline 🔴");
+        const hBar = document.getElementById(`n${nodeNum}-hum-bar`);
+        if (hBar) hBar.style.width = '0%';
+
+        setText(`n${nodeNum}-tds-val`, "—");
+        setText(`n${nodeNum}-tds-status`, "Offline 🔴");
+        const tdsBar = document.getElementById(`n${nodeNum}-tds-bar`);
+        if (tdsBar) tdsBar.style.width = '0%';
+      }
     }
 
     // ===== SENSOR LISTENER =====
@@ -808,7 +829,15 @@
         setText(`n${n}-qos-thpt`, q.throughput + ' bps');
         setText(`n${n}-qos-total-rx`, 'Total RX: ' + (q.total_rx || 0));
         setText(`n${n}-qos-last-lost`, q.last_lost || '—');
-        setText(`n${n}-qos-lost-count`, 'Total: ' + (q.total_lost || 0) + ' paket');
+
+        // Tampilkan penyebab paket hilang
+        const causeMap = {
+          'relay': '⚡ Noise Relay/Pompa',
+          'collision': '💥 Tabrakan Sinyal Radio',
+          'jarak': '📡 Atenuasi Jarak/Penghalang'
+        };
+        const causeText = causeMap[q.loss_cause] || '—';
+        setText(`n${n}-qos-lost-count`, q.loss_cause ? causeText : 'Total: ' + (q.total_lost || 0) + ' paket');
 
         // Update grafik Packet Loss
         pushChartLoss(n, q.packet_loss);
@@ -826,9 +855,10 @@
         }
         if (rxEl) rxEl.textContent = q.total_rx || 0;
 
-        // Log packet loss events
+        // Log packet loss events dengan penyebab
         if (q.last_lost && q.last_lost !== '—') {
-          addLog(`Node ${n}: Paket ${q.last_lost} Gagal Diterima (Packet Loss)`, 'warn');
+          const logCause = causeMap[q.loss_cause] || 'Tidak Diketahui';
+          addLog(`Node ${n}: Paket ${q.last_lost} Hilang — Sebab: ${logCause}`, 'warn');
         }
       });
     });

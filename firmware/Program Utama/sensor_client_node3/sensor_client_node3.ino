@@ -46,7 +46,7 @@
 #define NODE_ADDL  0x03   // ← SATU-SATUNYA perbedaan dengan Node 2 (0x02)
 #define GW_ADDL    0x01
 #define LORA_CHAN  0x17
-#define SEND_MS    7000
+#define SEND_MS    5000
 
 // ─── Objects ────────────────────────────────────────────────
 HardwareSerial e32Serial(2);
@@ -77,13 +77,11 @@ uint8_t modeOperasi = 0;  // 0 = AUTO, 1 = MANUAL
 #define TEMP_KIPAS_ON   30.0    // Suhu ON kipas (°C)
 #define TEMP_KIPAS_OFF  27.0    // Suhu OFF kipas (°C)
 #define TDS_POMPA_ON    700     // PPM batas bawah ON pompa
-#define DOSING_MS       3000    // Durasi pompa per shot (3 detik)
-#define DOSING_MAX      3       // Maksimal 3 shot berturut-turut
-#define DOSING_COOLDOWN 900000  // Cooldown 15 menit (ms)
-uint8_t dosingCount = 0;          // Hitungan dosing saat ini
-unsigned long dosingStart = 0;    // Waktu mulai shot saat ini
+#define DOSING_MS       30000   // Durasi pompa ON (30 detik)
+#define DOSING_COOLDOWN 600000  // Cooldown 10 menit (ms)
+unsigned long dosingStart = 0;    // Waktu mulai dosing
 unsigned long cooldownStart = 0;  // Waktu mulai cooldown
-bool dosingActive = false;        // Pompa sedang menyala (dosing)
+bool dosingActive = false;        // Pompa sedang menyala
 bool dosingCooldown = false;      // Sedang dalam periode cooldown
 
 // ════════════════════════════════════════════════════════════
@@ -239,8 +237,17 @@ bool waitAuxReady(unsigned long timeoutMs) {
 
 bool sendLoRaDirect(const char* payload) {
   if (!waitAuxReady(2000)) {
-    Serial.println("[TX] AUX timeout - E32 not ready");
-    return false;
+    Serial.println("[TX] AUX timeout - E32 not ready, clearing buffer...");
+    // Auto-Recovery: bersihkan buffer serial agar E32 tidak stuck
+    while (e32Serial.available()) e32Serial.read();
+    e32Serial.flush();
+    delay(100);
+    // Coba sekali lagi setelah clear buffer
+    if (!waitAuxReady(1000)) {
+      Serial.println("[TX] AUX still stuck after recovery");
+      return false;
+    }
+    Serial.println("[TX] AUX recovered after buffer clear");
   }
 
   while (e32Serial.available()) e32Serial.read();
@@ -299,10 +306,12 @@ void processLoRaRx() {
       if (node == NODE_ADDL) {
         modeOperasi = mode;  // Simpan mode ke variabel
         Serial.printf("[MODE] Set to %s\n", mode ? "MANUAL" : "AUTO");
-        // Jika beralih ke AUTO → matikan semua relay dulu
+        // Jika beralih ke AUTO → matikan semua relay & reset dosing
         if (mode == 0) {
           relayUpdate(false, false);
-          Serial.println("[MODE] AUTO — all relays OFF, setpoint aktif");
+          dosingActive = false;
+          dosingCooldown = false;
+          Serial.println("[MODE] AUTO — all relays OFF, dosing reset, setpoint aktif");
         }
       }
     }
@@ -492,40 +501,29 @@ void loop() {
       }
     }
 
-    // Setpoint Pompa Nutrisi (Relay 1): Pulsed Dosing System
-    // PPM < 700 → ON 3 detik, maks 3 shot, cooldown 15 menit
+    // Setpoint Pompa Nutrisi (Relay 1): Pulsed Dosing
+    // PPM < 700 → Pompa ON 5 detik, lalu tunggu 10 menit
     if (dosingCooldown) {
-      // Sedang dalam periode cooldown 15 menit
+      // Sedang menunggu nutrisi terlarut (10 menit)
       if (millis() - cooldownStart >= DOSING_COOLDOWN) {
         dosingCooldown = false;
-        dosingCount = 0;
-        Serial.println("[AUTO] Cooldown selesai, dosing siap kembali");
+        Serial.println("[AUTO] Cooldown 10 menit selesai, cek PPM kembali");
       }
     } else if (dosingActive) {
-      // Pompa sedang menyala, cek apakah sudah 3 detik
+      // Pompa sedang menyala, cek apakah sudah 5 detik
       if (millis() - dosingStart >= DOSING_MS) {
         relayOff(1);
         dosingActive = false;
-        dosingCount++;
-        Serial.printf("[AUTO] Pompa OFF (shot %d/%d selesai)\n", dosingCount, DOSING_MAX);
-        if (dosingCount >= DOSING_MAX) {
-          dosingCooldown = true;
-          cooldownStart = millis();
-          Serial.println("[AUTO] Maks dosing tercapai, cooldown 15 menit");
-        }
+        dosingCooldown = true;
+        cooldownStart = millis();
+        Serial.println("[AUTO] Pompa OFF (5 dtk selesai), tunggu 10 menit");
       }
-    } else if (curPpm >= 0 && curPpm < TDS_POMPA_ON && dosingCount < DOSING_MAX) {
-      // PPM masih kurang dan belum maks dosing → mulai shot baru
+    } else if (curPpm >= 0 && curPpm < TDS_POMPA_ON) {
+      // PPM kurang → mulai dosing
       relayOn(1);
       dosingActive = true;
       dosingStart = millis();
-      Serial.printf("[AUTO] Pompa ON shot %d/%d (PPM %.0f < 700)\n", dosingCount + 1, DOSING_MAX, curPpm);
-    } else if (curPpm >= TDS_POMPA_ON) {
-      // PPM sudah cukup → reset counter dosing
-      if (dosingCount > 0) {
-        Serial.printf("[AUTO] PPM %.0f >= 700, reset dosing counter\n", curPpm);
-        dosingCount = 0;
-      }
+      Serial.printf("[AUTO] Pompa ON 5 dtk (PPM %.0f < 700)\n", curPpm);
     }
   }
 
