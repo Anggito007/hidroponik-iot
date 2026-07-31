@@ -38,6 +38,7 @@
 #include <WiFiClientSecure.h>
 #include <HTTPClient.h>
 #include <time.h>
+#include <WiFiUdp.h>            // UDP Broadcast untuk Wireshark
 
 // ─── Pin Definitions ────────────────────────────────────────
 #define AUX_PIN   18
@@ -65,10 +66,16 @@
 #define HISTORY_INTERVAL    60000   // Push history setiap 60 detik
 #define NODE_OFFLINE_SEC    60      // Node offline setelah 60 detik
 
+// ─── UDP Broadcast Config (untuk pengujian Wireshark) ───────
+#define UDP_PORT_RAW   1234  // Port UDP: payload LoRa teks mentah (mudah dibaca Wireshark)
+#define UDP_PORT_JSON  1235  // Port UDP: payload JSON terstruktur (untuk analisis detail)
+
 // ─── Objects ────────────────────────────────────────────────
 HardwareSerial e32Serial(2);
 LoRa_E32 e32(&e32Serial, AUX_PIN, M0_PIN, M1_PIN);
 U8G2_SSD1306_128X64_NONAME_F_HW_I2C oled(U8G2_R0, U8X8_PIN_NONE, OLED_SCL, OLED_SDA);
+WiFiUDP udpRaw;   // UDP untuk payload teks mentah (Wireshark port 1234)
+WiFiUDP udpJson;  // UDP untuk payload JSON terstruktur (Wireshark port 1235)
 
 // ─── State ──────────────────────────────────────────────────
 bool wifiOk = false;
@@ -416,6 +423,42 @@ void processLoRa(char* msg) {
 
   Serial.printf("[QoS] N%d Delay:%lums Avg:%.0fms Loss:%.1f%% Thpt:%.0fbps\n",
     node, n.lastDelay, n.avgDelay, n.packetLoss, n.throughput);
+
+  // ── UDP Broadcast untuk Pengujian Wireshark ──
+  // Kirim 2 format paket UDP ke seluruh perangkat di jaringan lokal:
+  //   Port 1234: Payload LoRa teks mentah (DATA:2:#15:26.8:75.0...)
+  //   Port 1235: Payload JSON terstruktur { "node":2, "seq":15, ... }
+  if (wifiOk) {
+    // 1. Raw LoRa payload (Port 1234) - teks polos, langsung terbaca di Wireshark
+    char rawMsg[160];
+    snprintf(rawMsg, sizeof(rawMsg),
+      "[HydroIoT] N%d #%d T:%.1f H:%.1f TDS:%d R1:%d R2:%d Loss:%.1f%%",
+      node, n.seq, n.temp, n.hum, n.tds, n.r1, n.r2, n.packetLoss);
+    udpRaw.beginPacket(IPAddress(255,255,255,255), UDP_PORT_RAW);
+    udpRaw.print(rawMsg);
+    udpRaw.endPacket();
+
+    // 2. JSON payload (Port 1235) - terstruktur untuk analisis mendalam
+    StaticJsonDocument<256> udpDoc;
+    udpDoc["node"]        = node;
+    udpDoc["seq"]         = n.seq;
+    udpDoc["temp"]        = n.temp;
+    udpDoc["hum"]         = n.hum;
+    udpDoc["tds"]         = n.tds;
+    udpDoc["r1"]          = n.r1;
+    udpDoc["r2"]          = n.r2;
+    udpDoc["delay_ms"]    = n.lastDelay;
+    udpDoc["loss_pct"]    = round(n.packetLoss * 10.0f) / 10.0f;
+    udpDoc["throughput"]  = (int)(n.throughput + 0.5f);
+    udpDoc["loss_cause"]  = n.lossCause;
+    String udpJsonStr;
+    serializeJson(udpDoc, udpJsonStr);
+    udpJson.beginPacket(IPAddress(255,255,255,255), UDP_PORT_JSON);
+    udpJson.print(udpJsonStr);
+    udpJson.endPacket();
+
+    Serial.printf("[UDP] Broadcast N%d: %s\n", node, rawMsg);
+  }
 
   // Push to Firebase immediately
   if (wifiOk) {
