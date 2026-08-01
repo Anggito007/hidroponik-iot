@@ -314,6 +314,9 @@ void pushSensorToFirebase(int node) {
 void processLoRa(char* msg) {
   if (strncmp(msg, "DATA:", 5) != 0) return;
 
+  // Simpan panjang payload SEBELUM strtok memotong string
+  int rawPayloadLen = strlen(msg);  // msg masih utuh: "DATA:2:15:26.8:..." = ~43 karakter
+
   char* saveptr;
   char* f = strtok_r(msg + 5, ":", &saveptr);
   int cnt = 0;
@@ -389,7 +392,7 @@ void processLoRa(char* msg) {
 
   // ── QoS Calculations ──
   // Simpan ukuran payload untuk throughput
-  n.payloadSize = strlen(msg) + 5;  // +5 untuk header "DATA:" yang sudah dipotong
+  n.payloadSize = rawPayloadLen;  // Menggunakan panjang payload utuh (sebelum strtok)
 
   // 1. Delay (Latensi)
   //    Selisih millis() Gateway saat terima vs millis() Node saat kirim
@@ -467,17 +470,21 @@ void processLoRa(char* msg) {
 
   // ── Auto-Sync Feedback Loop (RAM-based, 0ms blocking) ──
   // Bandingkan status fisik relay Node vs perintah Web (dari RAM relayTrack)
-  // Jika tidak cocok, kirim ulang CMD secara otomatis
-  if (nodeMode[node] == "manual" && relayTrack[node].initialized) {
+  // Jika tidak cocok, kirim ulang CMD + SETMODE secara otomatis
+  // Grace period: skip jika CMD baru dikirim < 4 detik lalu (beri waktu Node merespon)
+  if (nodeMode[node] == "manual" && relayTrack[node].initialized
+      && (millis() - lastCmdTime[node] > 4000)) {
     RelayTrack& rt = relayTrack[node];
+    bool mismatch = false;
 
     // Sync Relay 1: Web minta ON tapi fisik Node masih OFF (atau sebaliknya)
     if (rt.r1 != n.r1) {
       char cmd[30];
       snprintf(cmd, sizeof(cmd), "CMD:%d:R1:%d", node, rt.r1);
       e32.sendFixedMessage(0x00, node, LORA_CHAN, cmd);
-      Serial.printf("[SYNC] N%d R1: web=%d fisik=%d → kirim ulang CMD\n",
+      Serial.printf("[SYNC] N%d R1: web=%d fisik=%d \u2192 kirim ulang CMD\n",
         node, rt.r1, n.r1);
+      mismatch = true;
     }
 
     // Sync Relay 2: Web minta ON tapi fisik Node masih OFF (atau sebaliknya)
@@ -485,8 +492,20 @@ void processLoRa(char* msg) {
       char cmd[30];
       snprintf(cmd, sizeof(cmd), "CMD:%d:R2:%d", node, rt.r2);
       e32.sendFixedMessage(0x00, node, LORA_CHAN, cmd);
-      Serial.printf("[SYNC] N%d R2: web=%d fisik=%d → kirim ulang CMD\n",
+      Serial.printf("[SYNC] N%d R2: web=%d fisik=%d \u2192 kirim ulang CMD\n",
         node, rt.r2, n.r2);
+      mismatch = true;
+    }
+
+    // Bug Fix: Jika ada mismatch, kirim ulang SETMODE:MANUAL
+    // Ini mengatasi kasus dimana SETMODE awal hilang di udara,
+    // sehingga Node masih di mode AUTO dan logika otomatis mematikan relay
+    if (mismatch) {
+      char modeCmd[30];
+      snprintf(modeCmd, sizeof(modeCmd), "SETMODE:%d:1", node);
+      e32.sendFixedMessage(0x00, node, LORA_CHAN, modeCmd);
+      Serial.printf("[SYNC] N%d: Re-send SETMODE:MANUAL\n", node);
+      lastCmdTime[node] = millis();
     }
   }
 }
@@ -512,30 +531,28 @@ void pollRelays() {
     int r1 = doc["r1"] ? 1 : 0;
     int r2 = doc["r2"] ? 1 : 0;
 
+    // Simpan status Firebase terbaru ke RAM (untuk Auto-Sync)
+    rt.r1 = r1;
+    rt.r2 = r2;
+
     if (!rt.initialized) {
       rt.r1p = r1; rt.r2p = r2;
       rt.initialized = true;
     }
 
-    // Send LoRa command if state changed (with retry for reliability)
+    // Send LoRa command if state changed (single send, Auto-Sync handles retry)
     char cmd[30];
     if (r1 != rt.r1p) {
       snprintf(cmd, sizeof(cmd), "CMD:%d:R1:%d", node, r1);
-      for (int retry = 0; retry < 3; retry++) {
-        e32.sendFixedMessage(0x00, node, LORA_CHAN, cmd);
-        if (retry < 2) delay(500);  // Jeda 500ms antar retry
-      }
-      Serial.printf("[Relay] %s (3x retry)\n", cmd);
+      e32.sendFixedMessage(0x00, node, LORA_CHAN, cmd);
+      Serial.printf("[Relay] %s\n", cmd);
       lastCmdTime[node] = millis();
       rt.r1p = r1;
     }
     if (r2 != rt.r2p) {
       snprintf(cmd, sizeof(cmd), "CMD:%d:R2:%d", node, r2);
-      for (int retry = 0; retry < 3; retry++) {
-        e32.sendFixedMessage(0x00, node, LORA_CHAN, cmd);
-        if (retry < 2) delay(500);  // Jeda 500ms antar retry
-      }
-      Serial.printf("[Relay] %s (3x retry)\n", cmd);
+      e32.sendFixedMessage(0x00, node, LORA_CHAN, cmd);
+      Serial.printf("[Relay] %s\n", cmd);
       lastCmdTime[node] = millis();
       rt.r2p = r2;
     }
@@ -563,15 +580,12 @@ void pollMode() {
       Serial.printf("[Mode] Node%d: %s → %s\n", node,
         oldMode.c_str(), resp.c_str());
 
-      // Send SETMODE to node via LoRa (3x retry for reliability)
+      // Send SETMODE to node via LoRa (single send, Auto-Sync handles retry)
       char cmd[30];
       int modeVal = (resp == "manual") ? 1 : 0;
       snprintf(cmd, sizeof(cmd), "SETMODE:%d:%d", node, modeVal);
-      for (int retry = 0; retry < 3; retry++) {
-        e32.sendFixedMessage(0x00, node, LORA_CHAN, cmd);
-        if (retry < 2) delay(500);
-      }
-      Serial.printf("[Mode] %s (3x retry)\n", cmd);
+      e32.sendFixedMessage(0x00, node, LORA_CHAN, cmd);
+      Serial.printf("[Mode] %s\n", cmd);
       lastCmdTime[node] = millis();
 
       // If switching to manual, reset relay tracking
