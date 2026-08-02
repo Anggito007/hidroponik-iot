@@ -38,7 +38,6 @@
 #include <WiFiClientSecure.h>
 #include <HTTPClient.h>
 #include <time.h>
-#include <WiFiUdp.h>            // UDP Broadcast untuk Wireshark
 
 // ─── Pin Definitions ────────────────────────────────────────
 #define AUX_PIN   18
@@ -66,16 +65,10 @@
 #define HISTORY_INTERVAL    60000   // Push history setiap 60 detik
 #define NODE_OFFLINE_SEC    60      // Node offline setelah 60 detik
 
-// ─── UDP Broadcast Config (untuk pengujian Wireshark) ───────
-#define UDP_PORT_RAW   1234  // Port UDP: payload LoRa teks mentah (mudah dibaca Wireshark)
-#define UDP_PORT_JSON  1235  // Port UDP: payload JSON terstruktur (untuk analisis detail)
-
 // ─── Objects ────────────────────────────────────────────────
 HardwareSerial e32Serial(2);
 LoRa_E32 e32(&e32Serial, AUX_PIN, M0_PIN, M1_PIN);
 U8G2_SSD1306_128X64_NONAME_F_HW_I2C oled(U8G2_R0, U8X8_PIN_NONE, OLED_SCL, OLED_SDA);
-WiFiUDP udpRaw;   // UDP untuk payload teks mentah (Wireshark port 1234)
-WiFiUDP udpJson;  // UDP untuk payload JSON terstruktur (Wireshark port 1235)
 
 // ─── State ──────────────────────────────────────────────────
 bool wifiOk = false;
@@ -314,9 +307,6 @@ void pushSensorToFirebase(int node) {
 void processLoRa(char* msg) {
   if (strncmp(msg, "DATA:", 5) != 0) return;
 
-  // Simpan panjang payload SEBELUM strtok memotong string
-  int rawPayloadLen = strlen(msg);  // msg masih utuh: "DATA:2:15:26.8:..." = ~43 karakter
-
   char* saveptr;
   char* f = strtok_r(msg + 5, ":", &saveptr);
   int cnt = 0;
@@ -392,7 +382,7 @@ void processLoRa(char* msg) {
 
   // ── QoS Calculations ──
   // Simpan ukuran payload untuk throughput
-  n.payloadSize = rawPayloadLen;  // Menggunakan panjang payload utuh (sebelum strtok)
+  n.payloadSize = strlen(msg) + 5;  // +5 untuk header "DATA:" yang sudah dipotong
 
   // 1. Delay (Latensi)
   //    Selisih millis() Gateway saat terima vs millis() Node saat kirim
@@ -427,85 +417,48 @@ void processLoRa(char* msg) {
   Serial.printf("[QoS] N%d Delay:%lums Avg:%.0fms Loss:%.1f%% Thpt:%.0fbps\n",
     node, n.lastDelay, n.avgDelay, n.packetLoss, n.throughput);
 
-  // ── UDP Broadcast untuk Pengujian Wireshark ──
-  // Kirim 2 format paket UDP ke seluruh perangkat di jaringan lokal:
-  //   Port 1234: Payload LoRa teks mentah (DATA:2:#15:26.8:75.0...)
-  //   Port 1235: Payload JSON terstruktur { "node":2, "seq":15, ... }
-  if (wifiOk) {
-    // 1. Raw LoRa payload (Port 1234) - teks polos, langsung terbaca di Wireshark
-    char rawMsg[160];
-    snprintf(rawMsg, sizeof(rawMsg),
-      "[HydroIoT] N%d #%d T:%.1f H:%.1f TDS:%d R1:%d R2:%d Loss:%.1f%%",
-      node, n.seq, n.temp, n.hum, n.tds, n.r1, n.r2, n.packetLoss);
-    udpRaw.beginPacket(IPAddress(255,255,255,255), UDP_PORT_RAW);
-    udpRaw.print(rawMsg);
-    udpRaw.endPacket();
-
-    // 2. JSON payload (Port 1235) - terstruktur untuk analisis mendalam
-    StaticJsonDocument<256> udpDoc;
-    udpDoc["node"]        = node;
-    udpDoc["seq"]         = n.seq;
-    udpDoc["temp"]        = n.temp;
-    udpDoc["hum"]         = n.hum;
-    udpDoc["tds"]         = n.tds;
-    udpDoc["r1"]          = n.r1;
-    udpDoc["r2"]          = n.r2;
-    udpDoc["delay_ms"]    = n.lastDelay;
-    udpDoc["loss_pct"]    = round(n.packetLoss * 10.0f) / 10.0f;
-    udpDoc["throughput"]  = (int)(n.throughput + 0.5f);
-    udpDoc["loss_cause"]  = n.lossCause;
-    String udpJsonStr;
-    serializeJson(udpDoc, udpJsonStr);
-    udpJson.beginPacket(IPAddress(255,255,255,255), UDP_PORT_JSON);
-    udpJson.print(udpJsonStr);
-    udpJson.endPacket();
-
-    Serial.printf("[UDP] Broadcast N%d: %s\n", node, rawMsg);
-  }
-
   // Push to Firebase immediately
   if (wifiOk) {
     pushSensorToFirebase(node);
   }
 
-  // ── Auto-Sync Feedback Loop (RAM-based, 0ms blocking) ──
-  // Bandingkan status fisik relay Node vs perintah Web (dari RAM relayTrack)
-  // Jika tidak cocok, kirim ulang CMD + SETMODE secara otomatis
-  // Grace period: skip jika CMD baru dikirim < 4 detik lalu (beri waktu Node merespon)
-  if (nodeMode[node] == "manual" && relayTrack[node].initialized
-      && (millis() - lastCmdTime[node] > 4000)) {
-    RelayTrack& rt = relayTrack[node];
-    bool mismatch = false;
+  // ── Auto-Sync Feedback Loop ──
+  // Bandingkan status fisik relay Node vs perintah Web (Firebase)
+  // Jika tidak cocok, kirim ulang CMD secara otomatis
+  if (nodeMode[node] == "manual" && wifiOk) {
+    char path[32];
+    snprintf(path, sizeof(path), "relays/node%d", node);
+    String resp = firebaseGet(path);
+    if (resp.length() > 0 && resp != "null") {
+      StaticJsonDocument<128> doc;
+      if (deserializeJson(doc, resp) == DeserializationError::Ok) {
+        int webR1 = doc["r1"] ? 1 : 0;
+        int webR2 = doc["r2"] ? 1 : 0;
 
-    // Sync Relay 1: Web minta ON tapi fisik Node masih OFF (atau sebaliknya)
-    if (rt.r1 != n.r1) {
-      char cmd[30];
-      snprintf(cmd, sizeof(cmd), "CMD:%d:R1:%d", node, rt.r1);
-      e32.sendFixedMessage(0x00, node, LORA_CHAN, cmd);
-      Serial.printf("[SYNC] N%d R1: web=%d fisik=%d \u2192 kirim ulang CMD\n",
-        node, rt.r1, n.r1);
-      mismatch = true;
-    }
+        // Sync Relay 1: Web minta ON tapi fisik Node masih OFF (atau sebaliknya)
+        if (webR1 != n.r1) {
+          char cmd[30];
+          snprintf(cmd, sizeof(cmd), "CMD:%d:R1:%d", node, webR1);
+          for (int retry = 0; retry < 3; retry++) {
+            e32.sendFixedMessage(0x00, node, LORA_CHAN, cmd);
+            if (retry < 2) delay(500);
+          }
+          Serial.printf("[SYNC] N%d R1: web=%d fisik=%d → kirim ulang CMD (3x)\n",
+            node, webR1, n.r1);
+        }
 
-    // Sync Relay 2: Web minta ON tapi fisik Node masih OFF (atau sebaliknya)
-    if (rt.r2 != n.r2) {
-      char cmd[30];
-      snprintf(cmd, sizeof(cmd), "CMD:%d:R2:%d", node, rt.r2);
-      e32.sendFixedMessage(0x00, node, LORA_CHAN, cmd);
-      Serial.printf("[SYNC] N%d R2: web=%d fisik=%d \u2192 kirim ulang CMD\n",
-        node, rt.r2, n.r2);
-      mismatch = true;
-    }
-
-    // Bug Fix: Jika ada mismatch, kirim ulang SETMODE:MANUAL
-    // Ini mengatasi kasus dimana SETMODE awal hilang di udara,
-    // sehingga Node masih di mode AUTO dan logika otomatis mematikan relay
-    if (mismatch) {
-      char modeCmd[30];
-      snprintf(modeCmd, sizeof(modeCmd), "SETMODE:%d:1", node);
-      e32.sendFixedMessage(0x00, node, LORA_CHAN, modeCmd);
-      Serial.printf("[SYNC] N%d: Re-send SETMODE:MANUAL\n", node);
-      lastCmdTime[node] = millis();
+        // Sync Relay 2: Web minta ON tapi fisik Node masih OFF (atau sebaliknya)
+        if (webR2 != n.r2) {
+          char cmd[30];
+          snprintf(cmd, sizeof(cmd), "CMD:%d:R2:%d", node, webR2);
+          for (int retry = 0; retry < 3; retry++) {
+            e32.sendFixedMessage(0x00, node, LORA_CHAN, cmd);
+            if (retry < 2) delay(500);
+          }
+          Serial.printf("[SYNC] N%d R2: web=%d fisik=%d → kirim ulang CMD (3x)\n",
+            node, webR2, n.r2);
+        }
+      }
     }
   }
 }
@@ -531,28 +484,30 @@ void pollRelays() {
     int r1 = doc["r1"] ? 1 : 0;
     int r2 = doc["r2"] ? 1 : 0;
 
-    // Simpan status Firebase terbaru ke RAM (untuk Auto-Sync)
-    rt.r1 = r1;
-    rt.r2 = r2;
-
     if (!rt.initialized) {
       rt.r1p = r1; rt.r2p = r2;
       rt.initialized = true;
     }
 
-    // Send LoRa command if state changed (single send, Auto-Sync handles retry)
+    // Send LoRa command if state changed (with retry for reliability)
     char cmd[30];
     if (r1 != rt.r1p) {
       snprintf(cmd, sizeof(cmd), "CMD:%d:R1:%d", node, r1);
-      e32.sendFixedMessage(0x00, node, LORA_CHAN, cmd);
-      Serial.printf("[Relay] %s\n", cmd);
+      for (int retry = 0; retry < 3; retry++) {
+        e32.sendFixedMessage(0x00, node, LORA_CHAN, cmd);
+        if (retry < 2) delay(500);  // Jeda 500ms antar retry
+      }
+      Serial.printf("[Relay] %s (3x retry)\n", cmd);
       lastCmdTime[node] = millis();
       rt.r1p = r1;
     }
     if (r2 != rt.r2p) {
       snprintf(cmd, sizeof(cmd), "CMD:%d:R2:%d", node, r2);
-      e32.sendFixedMessage(0x00, node, LORA_CHAN, cmd);
-      Serial.printf("[Relay] %s\n", cmd);
+      for (int retry = 0; retry < 3; retry++) {
+        e32.sendFixedMessage(0x00, node, LORA_CHAN, cmd);
+        if (retry < 2) delay(500);  // Jeda 500ms antar retry
+      }
+      Serial.printf("[Relay] %s (3x retry)\n", cmd);
       lastCmdTime[node] = millis();
       rt.r2p = r2;
     }
@@ -580,12 +535,15 @@ void pollMode() {
       Serial.printf("[Mode] Node%d: %s → %s\n", node,
         oldMode.c_str(), resp.c_str());
 
-      // Send SETMODE to node via LoRa (single send, Auto-Sync handles retry)
+      // Send SETMODE to node via LoRa (3x retry for reliability)
       char cmd[30];
       int modeVal = (resp == "manual") ? 1 : 0;
       snprintf(cmd, sizeof(cmd), "SETMODE:%d:%d", node, modeVal);
-      e32.sendFixedMessage(0x00, node, LORA_CHAN, cmd);
-      Serial.printf("[Mode] %s\n", cmd);
+      for (int retry = 0; retry < 3; retry++) {
+        e32.sendFixedMessage(0x00, node, LORA_CHAN, cmd);
+        if (retry < 2) delay(500);
+      }
+      Serial.printf("[Mode] %s (3x retry)\n", cmd);
       lastCmdTime[node] = millis();
 
       // If switching to manual, reset relay tracking

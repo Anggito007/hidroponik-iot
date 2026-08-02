@@ -811,8 +811,7 @@
       onValue(ref(db, `status/node${n}`), snap => {
         const d = snap.val();
         if (!d) return;
-        // Update status baik online maupun offline
-        updateNodeStatus(n, d.online, null, null, d.last_seen);
+        updateNodeStatus(n, Boolean(d.online), null, null, d.last_seen);
       });
 
       // ===== QOS LISTENER =====
