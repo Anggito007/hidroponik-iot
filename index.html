@@ -3,495 +3,1053 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>HydroIoT — Dashboard Hidroponik</title>
+  <title>HydroIoT — Monitoring & Kontrol Hidroponik</title>
+  <meta name="description" content="Dashboard monitoring dan kontrol suhu serta nutrisi pada tanaman hidroponik berbasis ESP32, LoRa, dan Firebase">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
   <style>
+    /* ═══════════════════════════════════════════════════
+       DESIGN TOKENS
+       ═══════════════════════════════════════════════════ */
     :root {
-      --bg: #0a0f1e; --bg2: #111827; --bg3: #1a2235;
-      --accent: #00d4aa; --accent2: #0ea5e9; --danger: #ef4444;
-      --warn: #f59e0b; --ok: #22c55e;
-      --text: #e2e8f0; --muted: #64748b; --border: #1e2d45;
+      --primary: #2563eb;
+      --primary-light: #3b82f6;
+      --primary-bg: #eff6ff;
+      --success: #22c55e;
+      --success-bg: #f0fdf4;
+      --warning: #f59e0b;
+      --warning-bg: #fffbeb;
+      --danger: #ef4444;
+      --danger-bg: #fef2f2;
+      --bg: #f1f5f9;
+      --card: #ffffff;
+      --sidebar: #1e293b;
+      --sidebar-hover: #334155;
+      --sidebar-active: #2563eb;
+      --text: #1e293b;
+      --text-secondary: #64748b;
+      --border: #e2e8f0;
+      --shadow: 0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.06);
+      --shadow-md: 0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -2px rgba(0,0,0,0.1);
+      --radius: 12px;
+      --sidebar-width: 240px;
     }
+
+    /* ═══════════════════════════════════════════════════
+       RESET & BASE
+       ═══════════════════════════════════════════════════ */
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: 'Inter', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+    body {
+      font-family: 'Inter', -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+    }
 
-    /* HEADER */
-    header {
-      background: linear-gradient(135deg, #0d1b2a, #1a2a3a);
+    /* ═══════════════════════════════════════════════════
+       SIDEBAR
+       ═══════════════════════════════════════════════════ */
+    .sidebar {
+      width: var(--sidebar-width);
+      background: var(--sidebar);
+      color: #fff;
+      position: fixed;
+      top: 0; left: 0; bottom: 0;
+      display: flex;
+      flex-direction: column;
+      z-index: 200;
+      transition: transform 0.3s ease;
+    }
+    .sidebar-header {
+      padding: 24px 20px 20px;
+      border-bottom: 1px solid rgba(255,255,255,0.08);
+    }
+    .sidebar-logo {
+      font-size: 1.25rem;
+      font-weight: 700;
+      color: #fff;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .sidebar-logo-icon {
+      width: 32px; height: 32px;
+      background: var(--primary);
+      border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1rem;
+    }
+    .sidebar-subtitle {
+      font-size: 0.7rem;
+      color: #94a3b8;
+      margin-top: 6px;
+      line-height: 1.4;
+    }
+    .sidebar-nav {
+      flex: 1;
+      padding: 12px 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .nav-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 14px;
+      border-radius: 8px;
+      color: #94a3b8;
+      font-size: 0.85rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s;
+      border: none;
+      background: none;
+      width: 100%;
+      text-align: left;
+    }
+    .nav-item:hover { background: var(--sidebar-hover); color: #e2e8f0; }
+    .nav-item.active { background: var(--sidebar-active); color: #fff; }
+    .nav-icon { font-size: 1.1rem; width: 22px; text-align: center; }
+    .sidebar-footer {
+      padding: 16px 20px;
+      border-top: 1px solid rgba(255,255,255,0.08);
+      font-size: 0.7rem;
+      color: #64748b;
+    }
+
+    /* ═══════════════════════════════════════════════════
+       MOBILE HAMBURGER
+       ═══════════════════════════════════════════════════ */
+    .hamburger {
+      display: none;
+      position: fixed;
+      top: 14px; left: 14px;
+      z-index: 300;
+      background: var(--sidebar);
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      width: 40px; height: 40px;
+      font-size: 1.2rem;
+      cursor: pointer;
+    }
+    .overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.4);
+      z-index: 150;
+    }
+    .overlay.show { display: block; }
+
+    @media (max-width: 768px) {
+      .hamburger { display: flex; align-items: center; justify-content: center; }
+      .sidebar { transform: translateX(-100%); }
+      .sidebar.open { transform: translateX(0); }
+      .main-content { margin-left: 0 !important; }
+      .top-bar { padding-left: 60px !important; }
+      .summary-grid { grid-template-columns: repeat(2, 1fr) !important; }
+      .monitor-grid { grid-template-columns: 1fr !important; }
+      .qos-grid { grid-template-columns: repeat(2, 1fr) !important; }
+    }
+
+    /* ═══════════════════════════════════════════════════
+       MAIN CONTENT
+       ═══════════════════════════════════════════════════ */
+    .main-content {
+      flex: 1;
+      margin-left: var(--sidebar-width);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+    .top-bar {
+      background: var(--card);
       border-bottom: 1px solid var(--border);
-      padding: 16px 24px;
-      display: flex; justify-content: space-between; align-items: center;
-      position: sticky; top: 0; z-index: 100;
-      backdrop-filter: blur(10px);
+      padding: 14px 28px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      position: sticky;
+      top: 0;
+      z-index: 100;
     }
-    .logo { font-size: 1.4rem; font-weight: 700; color: var(--accent); letter-spacing: -0.5px; }
-    .subtitle { font-size: 0.75rem; color: var(--muted); margin-top: 2px; }
-    .conn-badge { display: flex; align-items: center; gap: 8px; font-size: 0.8rem; color: var(--muted); }
-    .conn-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); transition: all .4s; }
-    .conn-dot.live { background: var(--ok); box-shadow: 0 0 8px var(--ok); animation: pulse 2s infinite; }
-    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.5} }
-
-    /* NODE TABS */
-    .node-tabs {
-      display: flex; gap: 8px; padding: 20px 24px 0;
-      border-bottom: 1px solid var(--border);
+    .top-bar-title {
+      font-size: 1.05rem;
+      font-weight: 600;
+      color: var(--text);
     }
-    .tab-btn {
-      padding: 10px 24px; border-radius: 10px 10px 0 0;
-      border: 1px solid var(--border); border-bottom: none;
-      background: var(--bg2); color: var(--muted);
-      cursor: pointer; font-size: 0.9rem; font-weight: 500;
-      transition: all .25s;
+    .top-bar-right {
+      display: flex;
+      align-items: center;
+      gap: 14px;
     }
-    .tab-btn.active { background: var(--bg3); color: var(--accent); border-color: var(--accent); }
-
-    /* MAIN */
-    main { max-width: 900px; margin: 0 auto; padding: 24px; }
-
-    /* STATUS BAR */
-    .status-bar {
-      display: flex; justify-content: space-between; align-items: center;
-      background: var(--bg2); border: 1px solid var(--border);
-      border-radius: 12px; padding: 12px 18px; margin-bottom: 24px;
-      font-size: 0.8rem; color: var(--muted);
+    .firebase-badge {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.78rem;
+      color: var(--text-secondary);
+      background: var(--bg);
+      padding: 5px 12px;
+      border-radius: 20px;
     }
-    .status-bar span:first-child { color: var(--accent); font-weight: 600; }
+    .firebase-dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: var(--text-secondary);
+      transition: all 0.4s;
+    }
+    .firebase-dot.live { background: var(--success); box-shadow: 0 0 6px var(--success); }
 
-    /* SECTION TITLE */
+    .page-content {
+      flex: 1;
+      padding: 24px 28px;
+      max-width: 1200px;
+      width: 100%;
+    }
+
+    /* ═══════════════════════════════════════════════════
+       PAGES
+       ═══════════════════════════════════════════════════ */
+    .page { display: none; }
+    .page.active { display: block; }
+
+    /* ═══════════════════════════════════════════════════
+       SECTION TITLE
+       ═══════════════════════════════════════════════════ */
     .section-title {
-      font-size: 0.85rem; font-weight: 600; color: var(--muted);
-      text-transform: uppercase; letter-spacing: 1px;
-      margin: 24px 0 14px; padding-left: 4px;
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: var(--text-secondary);
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      margin: 28px 0 14px;
+    }
+    .section-title:first-child { margin-top: 0; }
+
+    /* ═══════════════════════════════════════════════════
+       SUMMARY CARDS (Dashboard)
+       ═══════════════════════════════════════════════════ */
+    .summary-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 14px;
+    }
+    .summary-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 18px;
+      box-shadow: var(--shadow);
+      display: flex;
+      align-items: flex-start;
+      gap: 14px;
+    }
+    .summary-icon {
+      width: 42px; height: 42px;
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.2rem;
+      flex-shrink: 0;
+    }
+    .summary-icon.blue { background: var(--primary-bg); }
+    .summary-icon.green { background: var(--success-bg); }
+    .summary-icon.yellow { background: var(--warning-bg); }
+    .summary-icon.red { background: var(--danger-bg); }
+    .summary-info { flex: 1; }
+    .summary-label { font-size: 0.75rem; color: var(--text-secondary); font-weight: 500; }
+    .summary-value { font-size: 1.3rem; font-weight: 700; margin-top: 2px; }
+    .summary-sub { font-size: 0.7rem; color: var(--text-secondary); margin-top: 4px; }
+
+    /* ═══════════════════════════════════════════════════
+       NODE TAB SWITCHER
+       ═══════════════════════════════════════════════════ */
+    .node-switcher {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 18px;
+    }
+    .node-tab {
+      padding: 8px 20px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: var(--card);
+      color: var(--text-secondary);
+      font-size: 0.85rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .node-tab.active {
+      background: var(--primary);
+      color: #fff;
+      border-color: var(--primary);
     }
 
-    /* CARDS */
-    .cards-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; }
-    @media(min-width:600px){ .cards-grid { grid-template-columns: repeat(3, 1fr); } }
-
-    .card {
-      background: var(--bg2); border: 1px solid var(--border);
-      border-radius: 16px; padding: 18px 16px;
-      transition: all .3s; position: relative; overflow: hidden;
+    /* ═══════════════════════════════════════════════════
+       SENSOR CARDS (Monitoring)
+       ═══════════════════════════════════════════════════ */
+    .monitor-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 14px;
     }
-    .card::before {
-      content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
-      background: var(--muted); border-radius: 16px 16px 0 0; transition: background .3s;
+    .sensor-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 20px;
+      box-shadow: var(--shadow);
+      position: relative;
+      overflow: hidden;
+      transition: all 0.3s;
     }
-    .card.ok::before   { background: var(--ok); }
-    .card.warn::before { background: var(--warn); }
-    .card.bad::before  { background: var(--danger); }
-    .card-icon  { font-size: 1.5rem; margin-bottom: 8px; }
-    .card-label { font-size: 0.72rem; color: var(--muted); font-weight: 500; margin-bottom: 6px; text-transform: uppercase; letter-spacing: .5px; }
-    .card-value { font-size: 2rem; font-weight: 700; line-height: 1; color: var(--text); }
-    .card-unit  { font-size: 0.75rem; color: var(--muted); margin-top: 2px; }
-    .card-bar-wrap { height: 4px; background: var(--bg3); border-radius: 4px; margin: 10px 0 8px; }
-    .card-bar { height: 100%; background: var(--accent); border-radius: 4px; transition: width .6s ease; }
-    .card-status { font-size: 0.72rem; color: var(--muted); }
-    .card.ok .card-status   { color: var(--ok); }
-    .card.warn .card-status { color: var(--warn); }
-    .card.bad .card-status  { color: var(--danger); }
+    .sensor-card::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 3px;
+      background: var(--border);
+      transition: background 0.3s;
+    }
+    .sensor-card.ok::before { background: var(--success); }
+    .sensor-card.warn::before { background: var(--warning); }
+    .sensor-card.bad::before { background: var(--danger); }
+    .sensor-card.offline::before { background: var(--text-secondary); }
+    .sensor-card.offline { opacity: 0.6; }
+    .sensor-icon { font-size: 1.4rem; margin-bottom: 8px; }
+    .sensor-label {
+      font-size: 0.72rem;
+      color: var(--text-secondary);
+      font-weight: 500;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .sensor-value {
+      font-size: 2.2rem;
+      font-weight: 700;
+      color: var(--text);
+      margin: 4px 0;
+      line-height: 1;
+    }
+    .sensor-unit { font-size: 0.8rem; color: var(--text-secondary); }
+    .sensor-bar-wrap {
+      height: 4px;
+      background: var(--bg);
+      border-radius: 4px;
+      margin: 10px 0 6px;
+    }
+    .sensor-bar {
+      height: 100%;
+      background: var(--primary);
+      border-radius: 4px;
+      transition: width 0.6s ease;
+    }
+    .sensor-status {
+      font-size: 0.72rem;
+      font-weight: 500;
+      color: var(--text-secondary);
+    }
+    .sensor-card.ok .sensor-status { color: var(--success); }
+    .sensor-card.warn .sensor-status { color: var(--warning); }
+    .sensor-card.bad .sensor-status { color: var(--danger); }
 
-    /* MODE SWITCHER */
+    /* ═══════════════════════════════════════════════════
+       NODE STATUS BAR
+       ═══════════════════════════════════════════════════ */
+    .node-status-bar {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 14px 18px;
+      margin-bottom: 16px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+      box-shadow: var(--shadow);
+    }
+    .status-dot {
+      width: 10px; height: 10px;
+      border-radius: 50%;
+      background: var(--text-secondary);
+      flex-shrink: 0;
+    }
+    .status-dot.online { background: var(--success); box-shadow: 0 0 8px var(--success); }
+    .status-dot.offline { background: var(--danger); }
+    .status-text { font-size: 0.85rem; font-weight: 600; }
+    .status-text.online { color: var(--success); }
+    .status-text.offline { color: var(--danger); }
+    .status-text.waiting { color: var(--text-secondary); }
+    .status-meta {
+      margin-left: auto;
+      display: flex; gap: 18px; flex-wrap: wrap;
+      font-size: 0.78rem;
+      color: var(--text-secondary);
+    }
+    .status-meta span { font-weight: 600; color: var(--text); }
+
+    /* ═══════════════════════════════════════════════════
+       KONTROL (Mode + Relay)
+       ═══════════════════════════════════════════════════ */
     .mode-bar {
-      display: flex; align-items: center; justify-content: space-between;
-      background: var(--bg2); border: 1px solid var(--border);
-      border-radius: 12px; padding: 12px 18px; margin-bottom: 16px;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 14px 20px;
+      margin-bottom: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      box-shadow: var(--shadow);
     }
-    .mode-label { font-size: 0.82rem; color: var(--muted); font-weight: 500; }
-    .mode-label span { color: var(--text); font-weight: 600; }
+    .mode-label { font-size: 0.85rem; color: var(--text-secondary); font-weight: 500; }
+    .mode-label strong { color: var(--text); }
+    .mode-badge {
+      display: inline-block;
+      padding: 2px 10px;
+      border-radius: 20px;
+      font-size: 0.7rem;
+      font-weight: 700;
+      margin-left: 8px;
+    }
+    .mode-badge.auto { background: var(--primary-bg); color: var(--primary); }
+    .mode-badge.manual { background: var(--warning-bg); color: var(--warning); }
     .mode-btns { display: flex; gap: 8px; }
     .mode-btn {
-      padding: 6px 18px; border-radius: 8px; border: 1px solid var(--border);
-      background: var(--bg3); color: var(--muted);
-      font-size: 0.8rem; font-weight: 600; cursor: pointer; transition: all .2s;
+      padding: 7px 18px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: var(--card);
+      color: var(--text-secondary);
+      font-size: 0.8rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
     }
-    .mode-btn.active-auto  { background: rgba(14,165,233,.15); border-color: var(--accent2); color: var(--accent2); }
-    .mode-btn.active-manual { background: rgba(245,158,11,.15); border-color: var(--warn); color: var(--warn); }
-    .mode-badge {
-      display: inline-block; padding: 2px 10px; border-radius: 20px;
-      font-size: 0.7rem; font-weight: 700; margin-left: 8px;
-    }
-    .mode-badge.auto   { background: rgba(14,165,233,.2); color: var(--accent2); }
-    .mode-badge.manual { background: rgba(245,158,11,.2); color: var(--warn); }
+    .mode-btn.active-auto { background: var(--primary-bg); border-color: var(--primary); color: var(--primary); }
+    .mode-btn.active-manual { background: var(--warning-bg); border-color: var(--warning); color: var(--warning); }
 
-    /* RELAY */
-    .relay-grid { display: flex; flex-direction: column; gap: 12px; }
     .relay-card {
-      background: var(--bg2); border: 1px solid var(--border);
-      border-radius: 14px; padding: 16px 20px;
-      display: flex; justify-content: space-between; align-items: center;
-      transition: all .3s;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px 20px;
+      margin-bottom: 10px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      box-shadow: var(--shadow);
+      transition: all 0.3s;
     }
-    .relay-card.active { border-color: var(--ok); background: rgba(34,197,94,.07); }
-    .relay-card.manual-mode { border-color: var(--warn); }
-    .relay-left  { display: flex; align-items: center; gap: 14px; }
-    .relay-icon  { font-size: 1.5rem; }
-    .relay-name  { font-weight: 600; font-size: 0.95rem; }
-    .relay-desc  { font-size: 0.75rem; color: var(--muted); margin-top: 2px; }
+    .relay-card.active { border-color: var(--success); background: var(--success-bg); }
+    .relay-left { display: flex; align-items: center; gap: 14px; }
+    .relay-icon { font-size: 1.4rem; }
+    .relay-name { font-weight: 600; font-size: 0.92rem; }
+    .relay-desc { font-size: 0.75rem; color: var(--text-secondary); margin-top: 2px; }
     .relay-right { display: flex; align-items: center; gap: 12px; }
-    .relay-state { font-size: 0.75rem; font-weight: 600; color: var(--muted); }
-    .relay-card.active .relay-state { color: var(--ok); }
+    .relay-state { font-size: 0.78rem; font-weight: 600; color: var(--text-secondary); }
+    .relay-card.active .relay-state { color: var(--success); }
 
-    /* TOGGLE */
+    /* Toggle */
     .toggle { position: relative; display: inline-block; width: 48px; height: 26px; }
     .toggle input { opacity: 0; width: 0; height: 0; }
     .slider {
-      position: absolute; inset: 0; cursor: pointer;
-      background: var(--bg3); border-radius: 26px;
-      border: 1px solid var(--border); transition: .3s;
+      position: absolute; inset: 0;
+      cursor: pointer;
+      background: var(--bg);
+      border-radius: 26px;
+      border: 1px solid var(--border);
+      transition: 0.3s;
     }
     .slider::before {
-      content: ''; position: absolute;
-      width: 18px; height: 18px; left: 3px; top: 3px;
-      background: var(--muted); border-radius: 50%; transition: .3s;
+      content: '';
+      position: absolute;
+      width: 18px; height: 18px;
+      left: 3px; top: 3px;
+      background: var(--text-secondary);
+      border-radius: 50%;
+      transition: 0.3s;
     }
-    input:checked + .slider { background: var(--ok); border-color: var(--ok); }
+    input:checked + .slider { background: var(--success); border-color: var(--success); }
     input:checked + .slider::before { transform: translateX(22px); background: #fff; }
-    .toggle.disabled { opacity: 0.4; pointer-events: none; }
+    .toggle.disabled { opacity: 0.35; pointer-events: none; }
 
-    /* TARGET INFO */
-    .target-info {
-      background: var(--bg2); border: 1px solid var(--border);
-      border-radius: 14px; padding: 18px 20px; margin-bottom: 16px;
-      display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px;
+    /* ═══════════════════════════════════════════════════
+       QOS CARDS
+       ═══════════════════════════════════════════════════ */
+    .qos-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 14px;
     }
-    .target-item { text-align: center; }
-    .target-icon { font-size: 1.5rem; margin-bottom: 6px; }
-    .target-label { font-size: 0.72rem; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; margin-bottom: 4px; }
-    .target-value { font-size: 1.1rem; font-weight: 700; color: var(--accent); }
-    .target-desc { font-size: 0.7rem; color: var(--muted); margin-top: 2px; }
+    .qos-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 18px;
+      box-shadow: var(--shadow);
+      text-align: center;
+    }
+    .qos-label { font-size: 0.72rem; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }
+    .qos-value { font-size: 1.5rem; font-weight: 700; color: var(--text); }
+    .qos-sub { font-size: 0.72rem; color: var(--text-secondary); margin-top: 4px; }
+    .qos-card.good .qos-value { color: var(--success); }
+    .qos-card.fair .qos-value { color: var(--warning); }
+    .qos-card.poor .qos-value { color: var(--danger); }
 
-    /* LOG */
+    /* ═══════════════════════════════════════════════════
+       CHARTS
+       ═══════════════════════════════════════════════════ */
+    .chart-container {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 20px;
+      margin-bottom: 16px;
+      box-shadow: var(--shadow);
+    }
+    .chart-title { font-size: 0.9rem; font-weight: 600; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
+    .chart-wrap { position: relative; height: 240px; width: 100%; }
+
+    /* ═══════════════════════════════════════════════════
+       HISTORY TABLE
+       ═══════════════════════════════════════════════════ */
+    .history-controls {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 14px 18px;
+      margin-bottom: 14px;
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      flex-wrap: wrap;
+      box-shadow: var(--shadow);
+    }
+    .history-controls label { font-size: 0.8rem; color: var(--text-secondary); font-weight: 500; }
+    .history-controls select,
+    .history-controls input {
+      padding: 6px 12px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      font-size: 0.82rem;
+      font-family: inherit;
+      background: var(--bg);
+      color: var(--text);
+    }
+    .history-table-wrap {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+      box-shadow: var(--shadow);
+    }
+    .history-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.82rem;
+    }
+    .history-table th {
+      background: var(--bg);
+      padding: 10px 14px;
+      text-align: left;
+      font-weight: 600;
+      color: var(--text-secondary);
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      border-bottom: 1px solid var(--border);
+    }
+    .history-table td {
+      padding: 10px 14px;
+      border-bottom: 1px solid var(--border);
+      color: var(--text);
+    }
+    .history-table tr:last-child td { border-bottom: none; }
+    .history-table tr:hover { background: var(--bg); }
+    .history-empty {
+      text-align: center;
+      padding: 40px;
+      color: var(--text-secondary);
+      font-size: 0.85rem;
+    }
+
+    /* ═══════════════════════════════════════════════════
+       SETTINGS
+       ═══════════════════════════════════════════════════ */
+    .settings-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 20px;
+      margin-bottom: 14px;
+      box-shadow: var(--shadow);
+    }
+    .settings-title { font-weight: 600; font-size: 0.92rem; margin-bottom: 10px; }
+    .settings-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px 0;
+      font-size: 0.85rem;
+    }
+    .settings-row + .settings-row { border-top: 1px solid var(--border); }
+    .settings-val { font-weight: 600; color: var(--primary); }
+
+    /* ═══════════════════════════════════════════════════
+       LOG
+       ═══════════════════════════════════════════════════ */
     .log-box {
-      background: var(--bg2); border: 1px solid var(--border);
-      border-radius: 12px; padding: 14px; max-height: 200px;
-      overflow-y: auto; font-size: 0.78rem; font-family: monospace;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 14px;
+      max-height: 200px;
+      overflow-y: auto;
+      font-size: 0.78rem;
+      font-family: 'SF Mono', 'Consolas', monospace;
+      box-shadow: var(--shadow);
     }
     .log-entry { padding: 4px 0; border-bottom: 1px solid var(--border); }
-    .log-time  { color: var(--muted); margin-right: 8px; }
-    .log-ok    { color: var(--ok); }
-    .log-warn  { color: var(--warn); }
-    .log-err   { color: var(--danger); }
-    .log-info  { color: var(--accent2); }
+    .log-entry:last-child { border-bottom: none; }
+    .log-time { color: var(--text-secondary); margin-right: 8px; }
+    .log-ok { color: var(--success); }
+    .log-warn { color: var(--warning); }
+    .log-err { color: var(--danger); }
+    .log-info { color: var(--primary); }
 
-    .node-panel { display: none; }
-    .node-panel.active { display: block; }
-
-    /* CHARTS */
-    .charts-section { margin-top: 24px; }
-    .chart-container {
-      background: var(--bg2); border: 1px solid var(--border);
-      border-radius: 14px; padding: 20px; margin-bottom: 16px;
+    /* ═══════════════════════════════════════════════════
+       FOOTER
+       ═══════════════════════════════════════════════════ */
+    .footer {
+      padding: 20px 28px;
+      text-align: center;
+      font-size: 0.75rem;
+      color: var(--text-secondary);
+      border-top: 1px solid var(--border);
+      margin-top: auto;
     }
-    .chart-title {
-      font-size: 0.9rem; font-weight: 600; color: var(--text);
-      margin-bottom: 12px; display: flex; align-items: center; gap: 8px;
-    }
-    .chart-wrap { position: relative; height: 220px; width: 100%; }
-
-    /* NODE STATUS */
-    .node-status-bar {
-      display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
-      background: var(--bg2); border: 1px solid var(--border);
-      border-radius: 12px; padding: 12px 18px; margin-bottom: 16px;
-    }
-    .node-conn-dot {
-      width: 10px; height: 10px; border-radius: 50%;
-      background: var(--muted); flex-shrink: 0;
-    }
-    .node-conn-dot.online  { background: var(--ok); box-shadow: 0 0 8px var(--ok); animation: pulse 2s infinite; }
-    .node-conn-dot.offline { background: var(--danger); }
-    .node-conn-label { font-size: 0.85rem; font-weight: 600; }
-    .node-conn-label.online  { color: var(--ok); }
-    .node-conn-label.offline { color: var(--danger); }
-    .node-conn-label.waiting { color: var(--muted); }
-    .node-stats { display: flex; gap: 16px; margin-left: auto; flex-wrap: wrap; }
-    .node-stat  { font-size: 0.78rem; color: var(--muted); }
-    .node-stat span { font-weight: 600; color: var(--text); }
-    .node-stat .loss-ok   { color: var(--ok); }
-    .node-stat .loss-warn { color: var(--warn); }
-    .node-stat .loss-bad  { color: var(--danger); }
   </style>
 </head>
 <body>
-  <header>
-    <div>
-      <div class="logo">🌿 HydroIoT</div>
-      <div class="subtitle">Monitoring & Kontrol — 2 Node Hidroponik</div>
-    </div>
-    <div class="conn-badge">
-      <span class="conn-dot" id="connDot"></span>
-      <span id="connText">Menghubungkan...</span>
-    </div>
-  </header>
 
-  <!-- NODE TABS -->
-  <div class="node-tabs">
-    <button class="tab-btn active" onclick="switchNode(2)">🌱 Hidroponik A (Node 2)</button>
-    <button class="tab-btn"       onclick="switchNode(3)">🌿 Hidroponik B (Node 3)</button>
+  <!-- HAMBURGER (Mobile) -->
+  <button class="hamburger" id="hamburgerBtn" onclick="toggleSidebar()">☰</button>
+  <div class="overlay" id="overlay" onclick="toggleSidebar()"></div>
+
+  <!-- SIDEBAR -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-header">
+      <div class="sidebar-logo">
+        <div class="sidebar-logo-icon">🌿</div>
+        HydroIoT
+      </div>
+      <div class="sidebar-subtitle">Monitoring & Kontrol Suhu serta Nutrisi pada Tanaman Hidroponik</div>
+    </div>
+    <nav class="sidebar-nav">
+      <button class="nav-item active" onclick="showPage('dashboard', this)">
+        <span class="nav-icon">📊</span> Dashboard
+      </button>
+      <button class="nav-item" onclick="showPage('monitoring', this)">
+        <span class="nav-icon">📡</span> Monitoring
+      </button>
+      <button class="nav-item" onclick="showPage('kontrol', this)">
+        <span class="nav-icon">🎛️</span> Kontrol
+      </button>
+      <button class="nav-item" onclick="showPage('riwayat', this)">
+        <span class="nav-icon">📋</span> Riwayat Data
+      </button>
+      <button class="nav-item" onclick="showPage('pengaturan', this)">
+        <span class="nav-icon">⚙️</span> Pengaturan
+      </button>
+    </nav>
+    <div class="sidebar-footer">
+      Berbasis ESP32, LoRa & Firebase
+    </div>
+  </aside>
+
+  <!-- MAIN -->
+  <div class="main-content">
+    <div class="top-bar">
+      <div class="top-bar-title" id="pageTitle">Dashboard</div>
+      <div class="top-bar-right">
+        <div class="firebase-badge">
+          <span class="firebase-dot" id="connDot"></span>
+          <span id="connText">Menghubungkan...</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="page-content">
+
+      <!-- ═══════════════════════════════════════════
+           PAGE: DASHBOARD
+           ═══════════════════════════════════════════ -->
+      <div class="page active" id="page-dashboard">
+        <div class="section-title">Ringkasan Sistem</div>
+        <div class="summary-grid">
+          <div class="summary-card">
+            <div class="summary-icon blue">📡</div>
+            <div class="summary-info">
+              <div class="summary-label">Node Aktif</div>
+              <div class="summary-value" id="dash-nodes-active">0 / 2</div>
+              <div class="summary-sub" id="dash-nodes-sub">Menunggu data...</div>
+            </div>
+          </div>
+          <div class="summary-card">
+            <div class="summary-icon green">🌐</div>
+            <div class="summary-info">
+              <div class="summary-label">Gateway Status</div>
+              <div class="summary-value" id="dash-gw-status">—</div>
+              <div class="summary-sub" id="dash-gw-sub">Menunggu koneksi...</div>
+            </div>
+          </div>
+          <div class="summary-card">
+            <div class="summary-icon blue">🔥</div>
+            <div class="summary-info">
+              <div class="summary-label">Firebase Status</div>
+              <div class="summary-value" id="dash-fb-status">—</div>
+              <div class="summary-sub" id="dash-fb-sub">Menghubungkan...</div>
+            </div>
+          </div>
+          <div class="summary-card">
+            <div class="summary-icon yellow">🕒</div>
+            <div class="summary-info">
+              <div class="summary-label">Last Update</div>
+              <div class="summary-value" id="dash-last-update" style="font-size:1rem">—</div>
+              <div class="summary-sub" id="dash-update-sub">Belum ada data</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Quick Monitor per Node -->
+        <div class="section-title">Status Node</div>
+        <div class="node-status-bar" id="dash-n2-bar">
+          <div class="status-dot" id="dash-n2-dot"></div>
+          <div class="status-text waiting" id="dash-n2-label">Node 2 — Menunggu...</div>
+          <div class="status-meta">
+            <div>Suhu: <span id="dash-n2-temp">—</span></div>
+            <div>TDS: <span id="dash-n2-tds">—</span></div>
+            <div>Mode: <span id="dash-n2-mode">—</span></div>
+          </div>
+        </div>
+        <div class="node-status-bar" id="dash-n3-bar">
+          <div class="status-dot" id="dash-n3-dot"></div>
+          <div class="status-text waiting" id="dash-n3-label">Node 3 — Menunggu...</div>
+          <div class="status-meta">
+            <div>Suhu: <span id="dash-n3-temp">—</span></div>
+            <div>TDS: <span id="dash-n3-tds">—</span></div>
+            <div>Mode: <span id="dash-n3-mode">—</span></div>
+          </div>
+        </div>
+
+        <div class="section-title">Log Aktivitas</div>
+        <div class="log-box" id="logBox"></div>
+      </div>
+
+      <!-- ═══════════════════════════════════════════
+           PAGE: MONITORING
+           ═══════════════════════════════════════════ -->
+      <div class="page" id="page-monitoring">
+        <div class="node-switcher">
+          <button class="node-tab active" id="mon-tab-2" onclick="switchMonitorNode(2)">🌱 Hidroponik A (Node 2)</button>
+          <button class="node-tab" id="mon-tab-3" onclick="switchMonitorNode(3)">🌿 Hidroponik B (Node 3)</button>
+        </div>
+
+        <!-- Node 2 Panel -->
+        <div id="mon-panel-2">
+          <div class="node-status-bar">
+            <div class="status-dot" id="mon-n2-dot"></div>
+            <div class="status-text waiting" id="mon-n2-label">Menunggu Node...</div>
+            <div class="status-meta">
+              <div>Paket: <span id="mon-n2-seq">—</span></div>
+              <div>Update: <span id="mon-n2-time">—</span></div>
+            </div>
+          </div>
+          <div class="monitor-grid">
+            <div class="sensor-card" id="mon-n2-card-temp">
+              <div class="sensor-icon">🌡️</div>
+              <div class="sensor-label">Suhu Udara</div>
+              <div class="sensor-value" id="mon-n2-val-temp">—</div>
+              <div class="sensor-unit">°C</div>
+              <div class="sensor-bar-wrap"><div class="sensor-bar" id="mon-n2-bar-temp"></div></div>
+              <div class="sensor-status" id="mon-n2-status-temp">Menunggu...</div>
+            </div>
+            <div class="sensor-card" id="mon-n2-card-hum">
+              <div class="sensor-icon">💧</div>
+              <div class="sensor-label">Kelembapan</div>
+              <div class="sensor-value" id="mon-n2-val-hum">—</div>
+              <div class="sensor-unit">%RH</div>
+              <div class="sensor-bar-wrap"><div class="sensor-bar" id="mon-n2-bar-hum"></div></div>
+              <div class="sensor-status" id="mon-n2-status-hum">Menunggu...</div>
+            </div>
+            <div class="sensor-card" id="mon-n2-card-tds">
+              <div class="sensor-icon">⚗️</div>
+              <div class="sensor-label">TDS Nutrisi</div>
+              <div class="sensor-value" id="mon-n2-val-tds">—</div>
+              <div class="sensor-unit">ppm</div>
+              <div class="sensor-bar-wrap"><div class="sensor-bar" id="mon-n2-bar-tds"></div></div>
+              <div class="sensor-status" id="mon-n2-status-tds">Menunggu...</div>
+            </div>
+          </div>
+
+          <!-- QoS Node 2 -->
+          <div class="section-title">Kualitas Komunikasi LoRa — Node 2</div>
+          <div class="qos-grid">
+            <div class="qos-card" id="mon-n2-qos-delay-card">
+              <div class="qos-label">⚡ Delay</div>
+              <div class="qos-value" id="mon-n2-qos-delay">—</div>
+              <div class="qos-sub" id="mon-n2-qos-avg">Rata²: —</div>
+            </div>
+            <div class="qos-card" id="mon-n2-qos-loss-card">
+              <div class="qos-label">📊 Packet Loss</div>
+              <div class="qos-value" id="mon-n2-qos-loss">—</div>
+              <div class="qos-sub" id="mon-n2-qos-lost-total">Total: —</div>
+            </div>
+            <div class="qos-card" id="mon-n2-qos-thpt-card">
+              <div class="qos-label">🚀 Throughput</div>
+              <div class="qos-value" id="mon-n2-qos-thpt">—</div>
+              <div class="qos-sub" id="mon-n2-qos-rx">Total RX: —</div>
+            </div>
+          </div>
+
+          <!-- Charts Node 2 -->
+          <div class="section-title">Grafik Real-time — Node 2</div>
+          <div class="chart-container">
+            <div class="chart-title">🌡️ Suhu & Kelembapan</div>
+            <div class="chart-wrap"><canvas id="chart-n2-temp-hum"></canvas></div>
+          </div>
+          <div class="chart-container">
+            <div class="chart-title">⚗️ TDS Nutrisi</div>
+            <div class="chart-wrap"><canvas id="chart-n2-tds"></canvas></div>
+          </div>
+        </div>
+
+        <!-- Node 3 Panel -->
+        <div id="mon-panel-3" style="display:none">
+          <div class="node-status-bar">
+            <div class="status-dot" id="mon-n3-dot"></div>
+            <div class="status-text waiting" id="mon-n3-label">Menunggu Node...</div>
+            <div class="status-meta">
+              <div>Paket: <span id="mon-n3-seq">—</span></div>
+              <div>Update: <span id="mon-n3-time">—</span></div>
+            </div>
+          </div>
+          <div class="monitor-grid">
+            <div class="sensor-card" id="mon-n3-card-temp">
+              <div class="sensor-icon">🌡️</div>
+              <div class="sensor-label">Suhu Udara</div>
+              <div class="sensor-value" id="mon-n3-val-temp">—</div>
+              <div class="sensor-unit">°C</div>
+              <div class="sensor-bar-wrap"><div class="sensor-bar" id="mon-n3-bar-temp"></div></div>
+              <div class="sensor-status" id="mon-n3-status-temp">Menunggu...</div>
+            </div>
+            <div class="sensor-card" id="mon-n3-card-hum">
+              <div class="sensor-icon">💧</div>
+              <div class="sensor-label">Kelembapan</div>
+              <div class="sensor-value" id="mon-n3-val-hum">—</div>
+              <div class="sensor-unit">%RH</div>
+              <div class="sensor-bar-wrap"><div class="sensor-bar" id="mon-n3-bar-hum"></div></div>
+              <div class="sensor-status" id="mon-n3-status-hum">Menunggu...</div>
+            </div>
+            <div class="sensor-card" id="mon-n3-card-tds">
+              <div class="sensor-icon">⚗️</div>
+              <div class="sensor-label">TDS Nutrisi</div>
+              <div class="sensor-value" id="mon-n3-val-tds">—</div>
+              <div class="sensor-unit">ppm</div>
+              <div class="sensor-bar-wrap"><div class="sensor-bar" id="mon-n3-bar-tds"></div></div>
+              <div class="sensor-status" id="mon-n3-status-tds">Menunggu...</div>
+            </div>
+          </div>
+
+          <!-- QoS Node 3 -->
+          <div class="section-title">Kualitas Komunikasi LoRa — Node 3</div>
+          <div class="qos-grid">
+            <div class="qos-card" id="mon-n3-qos-delay-card">
+              <div class="qos-label">⚡ Delay</div>
+              <div class="qos-value" id="mon-n3-qos-delay">—</div>
+              <div class="qos-sub" id="mon-n3-qos-avg">Rata²: —</div>
+            </div>
+            <div class="qos-card" id="mon-n3-qos-loss-card">
+              <div class="qos-label">📊 Packet Loss</div>
+              <div class="qos-value" id="mon-n3-qos-loss">—</div>
+              <div class="qos-sub" id="mon-n3-qos-lost-total">Total: —</div>
+            </div>
+            <div class="qos-card" id="mon-n3-qos-thpt-card">
+              <div class="qos-label">🚀 Throughput</div>
+              <div class="qos-value" id="mon-n3-qos-thpt">—</div>
+              <div class="qos-sub" id="mon-n3-qos-rx">Total RX: —</div>
+            </div>
+          </div>
+
+          <!-- Charts Node 3 -->
+          <div class="section-title">Grafik Real-time — Node 3</div>
+          <div class="chart-container">
+            <div class="chart-title">🌡️ Suhu & Kelembapan</div>
+            <div class="chart-wrap"><canvas id="chart-n3-temp-hum"></canvas></div>
+          </div>
+          <div class="chart-container">
+            <div class="chart-title">⚗️ TDS Nutrisi</div>
+            <div class="chart-wrap"><canvas id="chart-n3-tds"></canvas></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══════════════════════════════════════════
+           PAGE: KONTROL
+           ═══════════════════════════════════════════ -->
+      <div class="page" id="page-kontrol">
+        <div class="node-switcher">
+          <button class="node-tab active" id="ctrl-tab-2" onclick="switchCtrlNode(2)">🌱 Hidroponik A (Node 2)</button>
+          <button class="node-tab" id="ctrl-tab-3" onclick="switchCtrlNode(3)">🌿 Hidroponik B (Node 3)</button>
+        </div>
+
+        <!-- Kontrol Node 2 -->
+        <div id="ctrl-panel-2">
+          <div class="mode-bar">
+            <div class="mode-label">Mode: <strong id="ctrl-n2-mode-text">AUTO</strong>
+              <span class="mode-badge auto" id="ctrl-n2-badge">AUTO</span>
+            </div>
+            <div class="mode-btns">
+              <button class="mode-btn active-auto" id="ctrl-n2-btn-auto" onclick="setMode(2,'auto')">⚙️ Auto</button>
+              <button class="mode-btn" id="ctrl-n2-btn-manual" onclick="setMode(2,'manual')">✋ Manual</button>
+            </div>
+          </div>
+          <div class="relay-card" id="ctrl-n2-relay-1">
+            <div class="relay-left">
+              <div class="relay-icon">🧪</div>
+              <div><div class="relay-name">Pompa Nutrisi</div><div class="relay-desc">Dosing AB Mix</div></div>
+            </div>
+            <div class="relay-right">
+              <span class="relay-state" id="ctrl-n2-relay-label-1">MATI</span>
+              <label class="toggle disabled" id="ctrl-n2-toggle-1"><input type="checkbox" id="ctrl-n2-r1" onchange="setRelay(2,'r1',this.checked)"><span class="slider"></span></label>
+            </div>
+          </div>
+          <div class="relay-card" id="ctrl-n2-relay-2">
+            <div class="relay-left">
+              <div class="relay-icon">🌀</div>
+              <div><div class="relay-name">Kipas Pendingin</div><div class="relay-desc">Turunkan suhu</div></div>
+            </div>
+            <div class="relay-right">
+              <span class="relay-state" id="ctrl-n2-relay-label-2">MATI</span>
+              <label class="toggle disabled" id="ctrl-n2-toggle-2"><input type="checkbox" id="ctrl-n2-r2" onchange="setRelay(2,'r2',this.checked)"><span class="slider"></span></label>
+            </div>
+          </div>
+        </div>
+
+        <!-- Kontrol Node 3 -->
+        <div id="ctrl-panel-3" style="display:none">
+          <div class="mode-bar">
+            <div class="mode-label">Mode: <strong id="ctrl-n3-mode-text">AUTO</strong>
+              <span class="mode-badge auto" id="ctrl-n3-badge">AUTO</span>
+            </div>
+            <div class="mode-btns">
+              <button class="mode-btn active-auto" id="ctrl-n3-btn-auto" onclick="setMode(3,'auto')">⚙️ Auto</button>
+              <button class="mode-btn" id="ctrl-n3-btn-manual" onclick="setMode(3,'manual')">✋ Manual</button>
+            </div>
+          </div>
+          <div class="relay-card" id="ctrl-n3-relay-1">
+            <div class="relay-left">
+              <div class="relay-icon">🧪</div>
+              <div><div class="relay-name">Pompa Nutrisi</div><div class="relay-desc">Dosing AB Mix</div></div>
+            </div>
+            <div class="relay-right">
+              <span class="relay-state" id="ctrl-n3-relay-label-1">MATI</span>
+              <label class="toggle disabled" id="ctrl-n3-toggle-1"><input type="checkbox" id="ctrl-n3-r1" onchange="setRelay(3,'r1',this.checked)"><span class="slider"></span></label>
+            </div>
+          </div>
+          <div class="relay-card" id="ctrl-n3-relay-2">
+            <div class="relay-left">
+              <div class="relay-icon">🌀</div>
+              <div><div class="relay-name">Kipas Pendingin</div><div class="relay-desc">Turunkan suhu</div></div>
+            </div>
+            <div class="relay-right">
+              <span class="relay-state" id="ctrl-n3-relay-label-2">MATI</span>
+              <label class="toggle disabled" id="ctrl-n3-toggle-2"><input type="checkbox" id="ctrl-n3-r2" onchange="setRelay(3,'r2',this.checked)"><span class="slider"></span></label>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══════════════════════════════════════════
+           PAGE: RIWAYAT DATA
+           ═══════════════════════════════════════════ -->
+      <div class="page" id="page-riwayat">
+        <div class="history-controls">
+          <label>Node:</label>
+          <select id="hist-node-select" onchange="loadHistoryTable()">
+            <option value="2">Node 2 — Hidroponik A</option>
+            <option value="3">Node 3 — Hidroponik B</option>
+          </select>
+          <label>Jumlah:</label>
+          <select id="hist-limit" onchange="loadHistoryTable()">
+            <option value="20">20 data</option>
+            <option value="50" selected>50 data</option>
+            <option value="100">100 data</option>
+          </select>
+        </div>
+        <div class="history-table-wrap">
+          <table class="history-table">
+            <thead>
+              <tr>
+                <th>Waktu</th>
+                <th>Suhu (°C)</th>
+                <th>Kelembapan (%)</th>
+                <th>TDS (ppm)</th>
+                <th>Relay R1</th>
+                <th>Relay R2</th>
+              </tr>
+            </thead>
+            <tbody id="hist-tbody">
+              <tr><td colspan="6" class="history-empty">Memuat data riwayat...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- ═══════════════════════════════════════════
+           PAGE: PENGATURAN
+           ═══════════════════════════════════════════ -->
+      <div class="page" id="page-pengaturan">
+        <div class="settings-card">
+          <div class="settings-title">🔧 Konfigurasi Sistem</div>
+          <div class="settings-row"><span>Air Data Rate LoRa</span><span class="settings-val">1.2 kbps</span></div>
+          <div class="settings-row"><span>Frekuensi LoRa</span><span class="settings-val">433 MHz</span></div>
+          <div class="settings-row"><span>Daya Pancar</span><span class="settings-val">100 mW (20 dBm)</span></div>
+          <div class="settings-row"><span>Interval Kirim Node</span><span class="settings-val">5 detik</span></div>
+          <div class="settings-row"><span>Interval Poll Relay</span><span class="settings-val">5 detik</span></div>
+          <div class="settings-row"><span>Mode Transmisi</span><span class="settings-val">Fixed Transmission</span></div>
+        </div>
+        <div class="settings-card">
+          <div class="settings-title">🌱 Setpoint Kontrol Otomatis</div>
+          <div class="settings-row"><span>Kipas ON saat Suhu &gt;</span><span class="settings-val">30.0 °C</span></div>
+          <div class="settings-row"><span>Kipas OFF saat Suhu ≤</span><span class="settings-val">27.0 °C</span></div>
+          <div class="settings-row"><span>Pompa ON saat TDS &lt;</span><span class="settings-val">700 ppm</span></div>
+          <div class="settings-row"><span>Durasi Dosing</span><span class="settings-val">30 detik</span></div>
+          <div class="settings-row"><span>Cooldown Dosing</span><span class="settings-val">10 menit</span></div>
+        </div>
+        <div class="settings-card">
+          <div class="settings-title">📡 Kalibrasi DHT22</div>
+          <div class="settings-row"><span>Offset Suhu (Node 2 & 3)</span><span class="settings-val">+3.2 °C</span></div>
+          <div class="settings-row"><span>Termometer Referensi</span><span class="settings-val">26.2 °C</span></div>
+        </div>
+      </div>
+
+    </div>
+
+    <div class="footer">© 2026 Monitoring dan Kontrol Suhu serta Nutrisi pada Tanaman Hidroponik</div>
   </div>
 
-  <main>
-
-    <!-- ===== NODE 2 ===== -->
-    <div class="node-panel active" id="panel-node2">
-      <div class="status-bar">
-        <span>📡 Node 2 — Hidroponik A</span>
-        <span id="lastUpdate2">Menunggu data...</span>
-        <span id="seqInfo2">Paket: —</span>
-      </div>
-
-      <!-- Status Koneksi Node 2 -->
-      <div class="node-status-bar">
-        <div class="node-conn-dot" id="n2-conn-dot"></div>
-        <div class="node-conn-label waiting" id="n2-conn-label">Menunggu Node...</div>
-        <div class="node-stats">
-          <div class="node-stat">Paket Diterima: <span id="n2-total-rx">—</span></div>
-          <div class="node-stat">Packet Loss: <span id="n2-loss-val" class="loss-ok">—</span></div>
-          <div class="node-stat">Delay LoRa: <span id="n2-lora-delay">—</span></div>
-          <div class="node-stat">Delay Total: <span id="n2-total-delay">—</span></div>
-          <div class="node-stat">Terakhir: <span id="n2-last-seen">—</span></div>
-        </div>
-      </div>
-
-      <div class="section-title">📊 Sensor — Hidroponik A</div>
-      <div class="cards-grid">
-        <div class="card" id="n2-card-temp">
-          <div class="card-icon">🌡️</div>
-          <div class="card-label">Suhu Udara</div>
-          <div class="card-value" id="n2-val-temp">—</div>
-          <div class="card-unit">°C</div>
-          <div class="card-bar-wrap"><div class="card-bar" id="n2-bar-temp"></div></div>
-          <div class="card-status" id="n2-status-temp">Menunggu...</div>
-        </div>
-        <div class="card" id="n2-card-hum">
-          <div class="card-icon">💧</div>
-          <div class="card-label">Kelembapan</div>
-          <div class="card-value" id="n2-val-hum">—</div>
-          <div class="card-unit">%</div>
-          <div class="card-bar-wrap"><div class="card-bar" id="n2-bar-hum"></div></div>
-          <div class="card-status" id="n2-status-hum">Menunggu...</div>
-        </div>
-
-        <div class="card" id="n2-card-tds">
-          <div class="card-icon">⚗️</div>
-          <div class="card-label">TDS Nutrisi</div>
-          <div class="card-value" id="n2-val-tds">—</div>
-          <div class="card-unit">ppm</div>
-          <div class="card-bar-wrap"><div class="card-bar" id="n2-bar-tds"></div></div>
-          <div class="card-status" id="n2-status-tds">Menunggu...</div>
-        </div>
-      </div>
-
-      <div class="section-title">📡 INFORMASI QOS LORA — HIDROPONIK A</div>
-      <div class="target-row">
-        <div class="target-card">
-          <div class="target-label">⚡ Delay LoRa</div>
-          <div class="target-value" id="n2-qos-delay">—</div>
-          <div class="target-desc" id="n2-qos-avg-delay">Rata²: —</div>
-        </div>
-        <div class="target-card">
-          <div class="target-label">📊 Packet Loss</div>
-          <div class="target-value" id="n2-qos-loss">—</div>
-          <div class="target-desc" id="n2-qos-total-lost">Total Lost: —</div>
-        </div>
-        <div class="target-card">
-          <div class="target-label">🚀 Throughput</div>
-          <div class="target-value" id="n2-qos-thpt">—</div>
-          <div class="target-desc" id="n2-qos-total-rx">Total RX: —</div>
-        </div>
-        <div class="target-card">
-          <div class="target-label">❌ Paket Hilang</div>
-          <div class="target-value" id="n2-qos-last-lost">—</div>
-          <div class="target-desc" id="n2-qos-lost-count">Total: — paket</div>
-        </div>
-      </div>
-
-      <div class="section-title">🎛️ Kontrol Relay — Hidroponik A</div>
-      <div class="mode-bar">
-        <div class="mode-label">Mode Kontrol: <span id="n2-mode-text">AUTO</span>
-          <span class="mode-badge auto" id="n2-mode-badge">AUTO</span>
-        </div>
-        <div class="mode-btns">
-          <button class="mode-btn active-auto" id="n2-btn-auto" onclick="setMode(2,'auto')">⚙️ Auto</button>
-          <button class="mode-btn" id="n2-btn-manual" onclick="setMode(2,'manual')">✋ Manual</button>
-        </div>
-      </div>
-      <div class="relay-grid">
-        <div class="relay-card" id="n2-relay-card-1">
-          <div class="relay-left">
-            <div class="relay-icon">🧪</div>
-            <div><div class="relay-name">Pompa Nutrisi</div><div class="relay-desc">Dosing AB Mix</div></div>
-          </div>
-          <div class="relay-right">
-            <span class="relay-state" id="n2-relay-label-1">MATI</span>
-            <label class="toggle" id="n2-toggle-1"><input type="checkbox" id="n2-relay1" onchange="setRelay(2,'r1',this.checked)"><span class="slider"></span></label>
-          </div>
-        </div>
-        <div class="relay-card" id="n2-relay-card-2">
-          <div class="relay-left">
-            <div class="relay-icon">🌀</div>
-            <div><div class="relay-name">Kipas Pendingin</div><div class="relay-desc">Turunkan suhu</div></div>
-          </div>
-          <div class="relay-right">
-            <span class="relay-state" id="n2-relay-label-2">MATI</span>
-            <label class="toggle" id="n2-toggle-2"><input type="checkbox" id="n2-relay2" onchange="setRelay(2,'r2',this.checked)"><span class="slider"></span></label>
-          </div>
-        </div>
-
-      </div>
-
-      <!-- GRAFIK NODE 2 -->
-      <div class="charts-section">
-        <div class="section-title">📈 Grafik Real-time — Hidroponik A</div>
-        <div class="chart-container">
-          <div class="chart-title">🌡️ Suhu & Kelembapan</div>
-          <div class="chart-wrap"><canvas id="n2-chart-temp-hum"></canvas></div>
-        </div>
-        <div class="chart-container">
-          <div class="chart-title">⚗️ TDS Nutrisi</div>
-          <div class="chart-wrap"><canvas id="n2-chart-tds"></canvas></div>
-        </div>
-        <!-- Grafik Packet Loss Node 2 -->
-        <div class="chart-container">
-          <div class="chart-title">📶 Packet Loss LoRa</div>
-          <div class="chart-wrap"><canvas id="n2-chart-loss"></canvas></div>
-        </div>
-      </div>
-    </div>
-    <div class="node-panel" id="panel-node3">
-      <div class="status-bar">
-        <span>📡 Node 3 — Hidroponik B</span>
-        <span id="lastUpdate3">Menunggu data...</span>
-        <span id="seqInfo3">Paket: —</span>
-      </div>
-
-      <!-- Status Koneksi Node 3 -->
-      <div class="node-status-bar">
-        <div class="node-conn-dot" id="n3-conn-dot"></div>
-        <div class="node-conn-label waiting" id="n3-conn-label">Menunggu Node...</div>
-        <div class="node-stats">
-          <div class="node-stat">Paket Diterima: <span id="n3-total-rx">—</span></div>
-          <div class="node-stat">Packet Loss: <span id="n3-loss-val" class="loss-ok">—</span></div>
-          <div class="node-stat">Delay LoRa: <span id="n3-lora-delay">—</span></div>
-          <div class="node-stat">Delay Total: <span id="n3-total-delay">—</span></div>
-          <div class="node-stat">Terakhir: <span id="n3-last-seen">—</span></div>
-        </div>
-      </div>
-
-      <div class="section-title">📊 Sensor — Hidroponik B</div>
-      <div class="cards-grid">
-        <div class="card" id="n3-card-temp">
-          <div class="card-icon">🌡️</div>
-          <div class="card-label">Suhu Udara</div>
-          <div class="card-value" id="n3-val-temp">—</div>
-          <div class="card-unit">°C</div>
-          <div class="card-bar-wrap"><div class="card-bar" id="n3-bar-temp"></div></div>
-          <div class="card-status" id="n3-status-temp">Menunggu...</div>
-        </div>
-        <div class="card" id="n3-card-hum">
-          <div class="card-icon">💧</div>
-          <div class="card-label">Kelembapan</div>
-          <div class="card-value" id="n3-val-hum">—</div>
-          <div class="card-unit">%</div>
-          <div class="card-bar-wrap"><div class="card-bar" id="n3-bar-hum"></div></div>
-          <div class="card-status" id="n3-status-hum">Menunggu...</div>
-        </div>
-
-        <div class="card" id="n3-card-tds">
-          <div class="card-icon">⚗️</div>
-          <div class="card-label">TDS Nutrisi</div>
-          <div class="card-value" id="n3-val-tds">—</div>
-          <div class="card-unit">ppm</div>
-          <div class="card-bar-wrap"><div class="card-bar" id="n3-bar-tds"></div></div>
-          <div class="card-status" id="n3-status-tds">Menunggu...</div>
-        </div>
-      </div>
-
-      <div class="section-title">📡 INFORMASI QOS LORA — HIDROPONIK B</div>
-      <div class="target-row">
-        <div class="target-card">
-          <div class="target-label">⚡ Delay LoRa</div>
-          <div class="target-value" id="n3-qos-delay">—</div>
-          <div class="target-desc" id="n3-qos-avg-delay">Rata²: —</div>
-        </div>
-        <div class="target-card">
-          <div class="target-label">📊 Packet Loss</div>
-          <div class="target-value" id="n3-qos-loss">—</div>
-          <div class="target-desc" id="n3-qos-total-lost">Total Lost: —</div>
-        </div>
-        <div class="target-card">
-          <div class="target-label">🚀 Throughput</div>
-          <div class="target-value" id="n3-qos-thpt">—</div>
-          <div class="target-desc" id="n3-qos-total-rx">Total RX: —</div>
-        </div>
-        <div class="target-card">
-          <div class="target-label">❌ Paket Hilang</div>
-          <div class="target-value" id="n3-qos-last-lost">—</div>
-          <div class="target-desc" id="n3-qos-lost-count">Total: — paket</div>
-        </div>
-      </div>
-
-      <div class="section-title">🎛️ Kontrol Relay — Hidroponik B</div>
-      <div class="mode-bar">
-        <div class="mode-label">Mode Kontrol: <span id="n3-mode-text">AUTO</span>
-          <span class="mode-badge auto" id="n3-mode-badge">AUTO</span>
-        </div>
-        <div class="mode-btns">
-          <button class="mode-btn active-auto" id="n3-btn-auto" onclick="setMode(3,'auto')">⚙️ Auto</button>
-          <button class="mode-btn" id="n3-btn-manual" onclick="setMode(3,'manual')">✋ Manual</button>
-        </div>
-      </div>
-      <div class="relay-grid">
-        <div class="relay-card" id="n3-relay-card-1">
-          <div class="relay-left">
-            <div class="relay-icon">🧪</div>
-            <div><div class="relay-name">Pompa Nutrisi</div><div class="relay-desc">Dosing AB Mix</div></div>
-          </div>
-          <div class="relay-right">
-            <span class="relay-state" id="n3-relay-label-1">MATI</span>
-            <label class="toggle" id="n3-toggle-1"><input type="checkbox" id="n3-relay1" onchange="setRelay(3,'r1',this.checked)"><span class="slider"></span></label>
-          </div>
-        </div>
-        <div class="relay-card" id="n3-relay-card-2">
-          <div class="relay-left">
-            <div class="relay-icon">🌀</div>
-            <div><div class="relay-name">Kipas Pendingin</div><div class="relay-desc">Turunkan suhu</div></div>
-          </div>
-          <div class="relay-right">
-            <span class="relay-state" id="n3-relay-label-2">MATI</span>
-            <label class="toggle" id="n3-toggle-2"><input type="checkbox" id="n3-relay2" onchange="setRelay(3,'r2',this.checked)"><span class="slider"></span></label>
-          </div>
-        </div>
-
-      </div>
-
-      <!-- GRAFIK NODE 3 -->
-      <div class="charts-section">
-        <div class="section-title">📈 Grafik Real-time — Hidroponik B</div>
-        <div class="chart-container">
-          <div class="chart-title">🌡️ Suhu & Kelembapan</div>
-          <div class="chart-wrap"><canvas id="n3-chart-temp-hum"></canvas></div>
-        </div>
-        <div class="chart-container">
-          <div class="chart-title">⚗️ TDS Nutrisi</div>
-          <div class="chart-wrap"><canvas id="n3-chart-tds"></canvas></div>
-        </div>
-        <div class="chart-container">
-          <div class="chart-title">📶 Packet Loss LoRa</div>
-          <div class="chart-wrap"><canvas id="n3-chart-loss"></canvas></div>
-        </div>
-      </div>
-    </div>
-
-    <!-- LOG -->
-    <div class="section-title">📋 Log Aktivitas</div>
-    <div class="log-box" id="logBox"></div>
-
-  </main>
-
+  <!-- ═══════════════════════════════════════════════
+       JAVASCRIPT
+       ═══════════════════════════════════════════════ -->
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
     import { getDatabase, ref, onValue, set, query, orderByChild, limitToLast, get } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
@@ -501,510 +1059,435 @@
       databaseURL: "https://hidroponik-server-default-rtdb.asia-southeast1.firebasedatabase.app",
       projectId: "hidroponik-server",
     };
-
     const app = initializeApp(firebaseConfig);
     const db = getDatabase(app);
 
-    // State
+    // ═══════════════════════════════════════════
+    //  STATE
+    // ═══════════════════════════════════════════
     const nodeMode = { 2: 'auto', 3: 'auto' };
-    const TDS_MIN = 600;
-    const TDS_MAX = 1400;
+    const nodeOnline = { 2: false, 3: false };
+    const nodeData = { 2: {}, 3: {} };
+    const TDS_MIN = 600, TDS_MAX = 1400;
 
-    // ===== CHART SYSTEM =====
+    // ═══════════════════════════════════════════
+    //  NAVIGATION
+    // ═══════════════════════════════════════════
+    const pageTitles = {
+      dashboard: 'Dashboard',
+      monitoring: 'Monitoring',
+      kontrol: 'Kontrol',
+      riwayat: 'Riwayat Data',
+      pengaturan: 'Pengaturan'
+    };
+
+    window.showPage = function(pageId, btn) {
+      document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+      document.querySelectorAll('.nav-item').forEach(b => b.classList.remove('active'));
+      document.getElementById('page-' + pageId).classList.add('active');
+      if (btn) btn.classList.add('active');
+      document.getElementById('pageTitle').textContent = pageTitles[pageId] || pageId;
+      // Resize charts when monitoring page is shown
+      if (pageId === 'monitoring') {
+        setTimeout(() => {
+          Object.values(charts).forEach(c => c.resize());
+        }, 50);
+      }
+      // Load history when riwayat page is shown
+      if (pageId === 'riwayat') loadHistoryTable();
+      // Close sidebar on mobile
+      if (window.innerWidth <= 768) toggleSidebar();
+    };
+
+    window.toggleSidebar = function() {
+      document.getElementById('sidebar').classList.toggle('open');
+      document.getElementById('overlay').classList.toggle('show');
+    };
+
+    window.switchMonitorNode = function(n) {
+      document.getElementById('mon-panel-2').style.display = n === 2 ? '' : 'none';
+      document.getElementById('mon-panel-3').style.display = n === 3 ? '' : 'none';
+      document.getElementById('mon-tab-2').className = 'node-tab' + (n === 2 ? ' active' : '');
+      document.getElementById('mon-tab-3').className = 'node-tab' + (n === 3 ? ' active' : '');
+      setTimeout(() => {
+        Object.values(charts).forEach(c => c.resize());
+      }, 50);
+    };
+
+    window.switchCtrlNode = function(n) {
+      document.getElementById('ctrl-panel-2').style.display = n === 2 ? '' : 'none';
+      document.getElementById('ctrl-panel-3').style.display = n === 3 ? '' : 'none';
+      document.getElementById('ctrl-tab-2').className = 'node-tab' + (n === 2 ? ' active' : '');
+      document.getElementById('ctrl-tab-3').className = 'node-tab' + (n === 3 ? ' active' : '');
+    };
+
+    // ═══════════════════════════════════════════
+    //  CHART SYSTEM
+    // ═══════════════════════════════════════════
     const MAX_POINTS = 50;
     const chartHistory = {
-      2: { labels: [], temp: [], hum: [], tds: [], loss: [] },
-      3: { labels: [], temp: [], hum: [], tds: [], loss: [] }
+      2: { labels: [], temp: [], hum: [], tds: [] },
+      3: { labels: [], temp: [], hum: [], tds: [] }
     };
     const charts = {};
 
-    function createChartDefaults() {
+    function chartDefaults() {
       return {
-        responsive: true,
-        maintainAspectRatio: false,
-        animation: false,
-        plugins: {
-          legend: { display: true, labels: { color: '#e2e8f0', font: { size: 11 } } }
-        },
+        responsive: true, maintainAspectRatio: false, animation: false,
+        plugins: { legend: { display: true, labels: { color: '#64748b', font: { size: 11, family: 'Inter' } } } },
         scales: {
-          x: {
-            ticks: { color: '#64748b', maxRotation: 0, autoSkip: true, maxTicksLimit: 8 },
-            grid: { color: '#1e2d45' }
-          }
+          x: { ticks: { color: '#94a3b8', maxRotation: 0, autoSkip: true, maxTicksLimit: 8 }, grid: { color: '#e2e8f0' } }
         }
       };
     }
 
     function initCharts() {
       [2, 3].forEach(n => {
-        // Suhu & Kelembapan (dual axis)
-        const optsTH = createChartDefaults();
+        const optsTH = chartDefaults();
         optsTH.interaction = { mode: 'index', intersect: false };
-        optsTH.scales.y = {
-          type: 'linear', position: 'left',
-          title: { display: true, text: '°C', color: '#ef4444' },
-          ticks: { color: '#ef4444' }, grid: { color: '#1e2d45' }
-        };
-        optsTH.scales.y1 = {
-          type: 'linear', position: 'right',
-          title: { display: true, text: '%', color: '#0ea5e9' },
-          ticks: { color: '#0ea5e9' }, grid: { display: false }
-        };
+        optsTH.scales.y = { type: 'linear', position: 'left', title: { display: true, text: '°C', color: '#ef4444' }, ticks: { color: '#ef4444' }, grid: { color: '#e2e8f0' } };
+        optsTH.scales.y1 = { type: 'linear', position: 'right', title: { display: true, text: '%', color: '#2563eb' }, ticks: { color: '#2563eb' }, grid: { display: false } };
 
-        const canvas1 = document.getElementById(`n${n}-chart-temp-hum`);
-        if (canvas1) {
-          charts[`n${n}-temp-hum`] = new Chart(canvas1, {
+        const c1 = document.getElementById(`chart-n${n}-temp-hum`);
+        if (c1) {
+          charts[`n${n}-th`] = new Chart(c1, {
             type: 'line',
             data: {
               labels: chartHistory[n].labels,
               datasets: [
-                {
-                  label: 'Suhu (°C)', data: chartHistory[n].temp,
-                  borderColor: '#ef4444', backgroundColor: 'rgba(239,68,68,0.1)',
-                  borderWidth: 2, tension: 0.3, pointRadius: 2, yAxisID: 'y'
-                },
-                {
-                  label: 'Kelembapan (%)', data: chartHistory[n].hum,
-                  borderColor: '#0ea5e9', backgroundColor: 'rgba(14,165,233,0.1)',
-                  borderWidth: 2, tension: 0.3, pointRadius: 2, yAxisID: 'y1'
-                }
+                { label: 'Suhu (°C)', data: chartHistory[n].temp, borderColor: '#ef4444', backgroundColor: 'rgba(239,68,68,0.08)', borderWidth: 2, tension: 0.3, pointRadius: 2, yAxisID: 'y' },
+                { label: 'Kelembapan (%)', data: chartHistory[n].hum, borderColor: '#2563eb', backgroundColor: 'rgba(37,99,235,0.08)', borderWidth: 2, tension: 0.3, pointRadius: 2, yAxisID: 'y1' }
               ]
             },
             options: optsTH
           });
         }
 
-        // TDS
-        const optsTDS = createChartDefaults();
-        optsTDS.scales.y = {
-          title: { display: true, text: 'ppm', color: '#00d4aa' },
-          ticks: { color: '#64748b' }, grid: { color: '#1e2d45' }
-        };
-
-        const canvas2 = document.getElementById(`n${n}-chart-tds`);
-        if (canvas2) {
-          charts[`n${n}-tds`] = new Chart(canvas2, {
+        const optsTDS = chartDefaults();
+        optsTDS.scales.y = { title: { display: true, text: 'ppm', color: '#22c55e' }, ticks: { color: '#64748b' }, grid: { color: '#e2e8f0' } };
+        const c2 = document.getElementById(`chart-n${n}-tds`);
+        if (c2) {
+          charts[`n${n}-tds`] = new Chart(c2, {
             type: 'line',
             data: {
               labels: chartHistory[n].labels,
-              datasets: [{
-                label: 'TDS (ppm)', data: chartHistory[n].tds,
-                borderColor: '#00d4aa', backgroundColor: 'rgba(0,212,170,0.1)',
-                borderWidth: 2, tension: 0.3, pointRadius: 2, fill: true
-              }]
+              datasets: [{ label: 'TDS (ppm)', data: chartHistory[n].tds, borderColor: '#22c55e', backgroundColor: 'rgba(34,197,94,0.08)', borderWidth: 2, tension: 0.3, pointRadius: 2, fill: true }]
             },
             options: optsTDS
           });
         }
-
-        // Packet Loss
-        const optsL = createChartDefaults();
-        optsL.scales.y = {
-          min: 0, max: 100,
-          title: { display: true, text: '%', color: '#a855f7' },
-          ticks: { color: '#64748b' }, grid: { color: '#1e2d45' }
-        };
-        const canvas4 = document.getElementById(`n${n}-chart-loss`);
-        if (canvas4) {
-          charts[`n${n}-loss`] = new Chart(canvas4, {
-            type: 'line',
-            data: {
-              labels: chartHistory[n].labels,
-              datasets: [{
-                label: 'Packet Loss (%)', data: chartHistory[n].loss,
-                borderColor: '#a855f7', backgroundColor: 'rgba(168,85,247,0.1)',
-                borderWidth: 2, tension: 0.3, pointRadius: 2, fill: true
-              }]
-            },
-            options: optsL
-          });
-        }
       });
     }
 
-    function pushChartData(nodeNum, temp, hum, tds, loss) {
-      const h = chartHistory[nodeNum];
+    function pushChart(n, temp, hum, tds) {
+      const h = chartHistory[n];
       const now = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-
       h.labels.push(now);
       h.temp.push(temp > -50 ? temp : null);
       h.hum.push(hum > 0 ? hum : null);
       h.tds.push(tds > 0 ? tds : null);
-      h.loss.push(loss != null ? loss : null);
-
-      if (h.labels.length > MAX_POINTS) {
-        h.labels.shift(); h.temp.shift(); h.hum.shift();
-        h.tds.shift(); h.loss.shift();
-      }
-
-      if (charts[`n${nodeNum}-temp-hum`]) charts[`n${nodeNum}-temp-hum`].update('none');
-      if (charts[`n${nodeNum}-tds`])      charts[`n${nodeNum}-tds`].update('none');
-      if (charts[`n${nodeNum}-loss`])     charts[`n${nodeNum}-loss`].update('none');
+      if (h.labels.length > MAX_POINTS) { h.labels.shift(); h.temp.shift(); h.hum.shift(); h.tds.shift(); }
+      if (charts[`n${n}-th`]) charts[`n${n}-th`].update('none');
+      if (charts[`n${n}-tds`]) charts[`n${n}-tds`].update('none');
     }
 
-    function pushChartLoss(n, lossVal) {
-      const now = new Date().toLocaleTimeString('id-ID', {hour:'2-digit', minute:'2-digit', second:'2-digit'});
-      const key = `n${n}-loss`;
-      if (!charts[key]) return;
-      const h = chartHistory[n];
-      h.loss.push(lossVal ?? 0);
-      if (h.loss.length > MAX_POINTS) h.loss.shift();
-      // Add time label if needed
-      if (h.labels.length < h.loss.length) h.labels.push(now);
-      if (h.labels.length > MAX_POINTS) h.labels.shift();
-      charts[key].data.labels = [...h.labels];
-      charts[key].data.datasets[0].data = [...h.loss];
-      charts[key].update();
-    }
-
-    // ===== LOAD HISTORY FROM FIREBASE =====
+    // ═══════════════════════════════════════════
+    //  LOAD HISTORY FROM FIREBASE (for charts + table)
+    // ═══════════════════════════════════════════
     async function loadHistory() {
       for (const n of [2, 3]) {
         try {
-          const histRef = query(
-            ref(db, `history/node${n}`),
-            orderByChild('timestamp_ms'),
-            limitToLast(MAX_POINTS)
-          );
+          const histRef = query(ref(db, `history/node${n}`), orderByChild('timestamp_ms'), limitToLast(MAX_POINTS));
           const snap = await get(histRef);
-          if (!snap.exists()) {
-            addLog(`Node${n}: tidak ada data history`, "warn");
-            continue;
-          }
-
-          // Firebase push keys are unordered — sort by timestamp_ms
+          if (!snap.exists()) { addLog(`Node${n}: tidak ada history`, 'warn'); continue; }
           const entries = [];
-          snap.forEach(child => {
-            const v = child.val();
-            if (v && v.timestamp_ms) entries.push(v);
-          });
+          snap.forEach(child => { const v = child.val(); if (v && v.timestamp_ms) entries.push(v); });
           entries.sort((a, b) => a.timestamp_ms - b.timestamp_ms);
-
-          // Populate chartHistory
           const h = chartHistory[n];
           entries.forEach(v => {
-            const d = new Date(v.timestamp_ms);
-            h.labels.push(d.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
+            h.labels.push(new Date(v.timestamp_ms).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
             h.temp.push(v.temp > -50 ? v.temp : null);
             h.hum.push(v.hum > 0 ? v.hum : null);
             h.tds.push(v.tds > 0 ? v.tds : null);
-            h.loss.push(null);  // history tidak menyimpan loss_rate
           });
-
-          // Redraw charts
-          if (charts[`n${n}-temp-hum`]) charts[`n${n}-temp-hum`].update('none');
-          if (charts[`n${n}-tds`])      charts[`n${n}-tds`].update('none');
-          if (charts[`n${n}-loss`])     charts[`n${n}-loss`].update('none');
-
-          addLog(`Node${n}: ${entries.length} data history dimuat`, "ok");
+          if (charts[`n${n}-th`]) charts[`n${n}-th`].update('none');
+          if (charts[`n${n}-tds`]) charts[`n${n}-tds`].update('none');
+          addLog(`Node${n}: ${entries.length} data history dimuat`, 'ok');
         } catch (err) {
-          addLog(`Node${n}: gagal muat history — ${err.message}`, "err");
+          addLog(`Node${n}: gagal muat history — ${err.message}`, 'err');
         }
       }
     }
 
-    function updateDelayUI(nodeNum, totalDelayMs, loraDelayMs, seq) {
-      const loraEl  = document.getElementById(`n${nodeNum}-lora-delay`);
-      const totalEl = document.getElementById(`n${nodeNum}-total-delay`);
-      if (loraEl && loraDelayMs != null) {
-        loraEl.textContent = loraDelayMs + ' ms';
-        loraEl.style.color = loraDelayMs < 500 ? 'var(--ok)' : loraDelayMs < 1500 ? 'var(--warn)' : 'var(--danger)';
+    // ═══════════════════════════════════════════
+    //  HISTORY TABLE
+    // ═══════════════════════════════════════════
+    window.loadHistoryTable = async function() {
+      const n = parseInt(document.getElementById('hist-node-select').value);
+      const limit = parseInt(document.getElementById('hist-limit').value);
+      const tbody = document.getElementById('hist-tbody');
+      tbody.innerHTML = '<tr><td colspan="6" class="history-empty">Memuat...</td></tr>';
+      try {
+        const histRef = query(ref(db, `history/node${n}`), orderByChild('timestamp_ms'), limitToLast(limit));
+        const snap = await get(histRef);
+        if (!snap.exists()) { tbody.innerHTML = '<tr><td colspan="6" class="history-empty">Tidak ada data riwayat</td></tr>'; return; }
+        const entries = [];
+        snap.forEach(child => { const v = child.val(); if (v) entries.push(v); });
+        entries.sort((a, b) => (b.timestamp_ms || 0) - (a.timestamp_ms || 0));
+        tbody.innerHTML = entries.map(v => {
+          const t = v.timestamp_ms ? new Date(v.timestamp_ms).toLocaleString('id-ID', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '—';
+          return `<tr>
+            <td>${t}</td>
+            <td>${v.temp != null ? parseFloat(v.temp).toFixed(1) : '—'}</td>
+            <td>${v.hum != null ? parseFloat(v.hum).toFixed(1) : '—'}</td>
+            <td>${v.tds != null ? v.tds : '—'}</td>
+            <td>${v.r1 ? '🟢 ON' : '⚪ OFF'}</td>
+            <td>${v.r2 ? '🟢 ON' : '⚪ OFF'}</td>
+          </tr>`;
+        }).join('');
+      } catch (err) {
+        tbody.innerHTML = `<tr><td colspan="6" class="history-empty">Error: ${err.message}</td></tr>`;
       }
-      if (totalEl && totalDelayMs != null) {
-        const detik = (totalDelayMs / 1000).toFixed(1);
-        totalEl.textContent = detik + ' s';
-        totalEl.style.color = totalDelayMs < 2000 ? 'var(--ok)' : totalDelayMs < 5000 ? 'var(--warn)' : 'var(--danger)';
-      }
-    }
+    };
 
-    function updateNodeStatus(nodeNum, online, totalRx, lossRate, timestamp) {
-      const dot   = document.getElementById(`n${nodeNum}-conn-dot`);
-      const label = document.getElementById(`n${nodeNum}-conn-label`);
-      const rxEl  = document.getElementById(`n${nodeNum}-total-rx`);
-      const lossEl = document.getElementById(`n${nodeNum}-loss-val`);
-      const seenEl = document.getElementById(`n${nodeNum}-last-seen`);
-
-      if (dot) {
-        dot.className = `node-conn-dot ${online ? 'online' : 'offline'}`;
-      }
-      if (label) {
-        label.textContent = online ? `Node ${nodeNum} Terhubung ✓` : `Node ${nodeNum} Offline`;
-        label.className   = `node-conn-label ${online ? 'online' : 'offline'}`;
-      }
-      if (rxEl && totalRx != null) rxEl.textContent = totalRx;
-      if (lossEl && lossRate != null) {
-        const pct = parseFloat(lossRate).toFixed(1);
-        const cls = pct <= 5 ? 'loss-ok' : pct <= 20 ? 'loss-warn' : 'loss-bad';
-        lossEl.textContent  = pct + '%';
-        lossEl.className    = cls;
-      }
-      if (seenEl && timestamp) seenEl.textContent = timestamp;
-
-      // Opsi B: Reset kartu sensor ke '—' saat Node Offline
-      if (!online) {
-        setText(`lastUpdate${nodeNum}`, "Update: Offline (Terputus)");
-        setText(`seqInfo${nodeNum}`, "Paket: —");
-
-        setText(`n${nodeNum}-temp-val`, "—");
-        setText(`n${nodeNum}-temp-status`, "Offline 🔴");
-        const tBar = document.getElementById(`n${nodeNum}-temp-bar`);
-        if (tBar) tBar.style.width = '0%';
-
-        setText(`n${nodeNum}-hum-val`, "—");
-        setText(`n${nodeNum}-hum-status`, "Offline 🔴");
-        const hBar = document.getElementById(`n${nodeNum}-hum-bar`);
-        if (hBar) hBar.style.width = '0%';
-
-        setText(`n${nodeNum}-tds-val`, "—");
-        setText(`n${nodeNum}-tds-status`, "Offline 🔴");
-        const tdsBar = document.getElementById(`n${nodeNum}-tds-bar`);
-        if (tdsBar) tdsBar.style.width = '0%';
-      }
-    }
-
-    // ===== SENSOR LISTENER =====
+    // ═══════════════════════════════════════════
+    //  FIREBASE LISTENERS
+    // ═══════════════════════════════════════════
     [2, 3].forEach(n => {
+      // ── Sensor Data ──
       onValue(ref(db, `sensors/node${n}`), snap => {
         const d = snap.val();
         if (!d) return;
         setConn(true);
+        nodeData[n] = d;
 
-        // Format timestamp dari timestamp_ms (field timestamp sudah dihapus dari Firebase)
         const tsText = d.timestamp_ms
-          ? new Date(d.timestamp_ms).toLocaleTimeString('id-ID', { hour:'2-digit', minute:'2-digit', second:'2-digit' })
-          : (d.timestamp || "—");
-        setText(`lastUpdate${n}`, "Update: " + tsText);
-        setText(`seqInfo${n}`, `Paket: #${d.seq ?? "—"}`);
+          ? new Date(d.timestamp_ms).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+          : '—';
 
-        updateCard(n, "temp", d.temp, 0, 50, 20, 35,
-          v => v < 20 ? "⚠ Dingin!" : v > 35 ? "⚠ Panas!" : "Normal ✓");
-        updateCard(n, "hum", d.hum, 0, 100, 40, 90,
-          v => v < 40 ? "⚠ Kering!" : v > 90 ? "⚠ Lembap!" : "Normal ✓");
+        // Only update sensor UI if node is online
+        if (nodeOnline[n]) {
+          // Monitoring page
+          setText(`mon-n${n}-seq`, `#${d.seq ?? '—'}`);
+          setText(`mon-n${n}-time`, tsText);
+          updateSensorCard(n, 'temp', d.temp, 0, 50, 20, 35, v => v < 20 ? '⚠ Dingin!' : v > 35 ? '⚠ Panas!' : 'Normal ✓');
+          updateSensorCard(n, 'hum', d.hum, 0, 100, 40, 90, v => v < 40 ? '⚠ Kering!' : v > 90 ? '⚠ Lembap!' : 'Normal ✓');
+          updateSensorCard(n, 'tds', d.tds, 0, 2000, TDS_MIN, TDS_MAX, v => v < TDS_MIN ? '⚠ Nutrisi Kurang!' : v > TDS_MAX ? '⚠ Nutrisi Lebih!' : '✓ Normal');
 
-        updateCard(n, "tds", d.tds, 0, 2000, TDS_MIN, TDS_MAX,
-          v => v < TDS_MIN ? "⚠ Nutrisi Kurang!" : v > TDS_MAX ? "⚠ Nutrisi Lebih!" : "✓ Normal");
+          // Dashboard quick view
+          setText(`dash-n${n}-temp`, d.temp != null ? parseFloat(d.temp).toFixed(1) + '°C' : '—');
+          setText(`dash-n${n}-tds`, d.tds != null ? d.tds + ' ppm' : '—');
 
-        // Update grafik (loss_rate tidak lagi ada di Firebase, kirim null)
-        pushChartData(n, d.temp, d.hum, d.tds, d.loss_rate ?? null);
+          // Push chart data
+          pushChart(n, d.temp, d.hum, d.tds);
+        }
 
-        // Update status koneksi node (total_rx, loss_rate, timestamp sudah dihapus)
-        updateNodeStatus(n, true, d.total_rx ?? null, d.loss_rate ?? null, tsText);
+        // Last update (dashboard)
+        setText('dash-last-update', tsText);
+        setText('dash-update-sub', `Node ${n}`);
 
+        // Relay UI (auto mode reads from sensor data)
         if (nodeMode[n] === 'auto') {
           updateRelayUI(n, 1, d.r1);
           updateRelayUI(n, 2, d.r2);
         }
-      }, err => {
-        setConn(false);
-        addLog("Firebase error: " + err.message, "err");
-      });
+      }, err => { setConn(false); addLog('Firebase error: ' + err.message, 'err'); });
 
+      // ── Relay State ──
       onValue(ref(db, `relays/node${n}`), snap => {
         const d = snap.val();
         if (!d) return;
-        // Selalu update UI dari Firebase /relays (ini state yang kita set sendiri)
         updateRelayUI(n, 1, d.r1);
         updateRelayUI(n, 2, d.r2);
       });
 
-      // Status online/offline dari Firebase /status/nodeX
+      // ── Online/Offline Status ──
       onValue(ref(db, `status/node${n}`), snap => {
         const d = snap.val();
         if (!d) return;
-        updateNodeStatus(n, Boolean(d.online), null, null, d.last_seen);
+        const online = Boolean(d.online);
+        nodeOnline[n] = online;
+        updateNodeStatusUI(n, online, d.last_seen);
+
+        // If offline → reset sensor cards to "—"
+        if (!online) {
+          resetSensorCards(n);
+          setText(`dash-n${n}-temp`, '—');
+          setText(`dash-n${n}-tds`, '—');
+        }
+
+        // Update dashboard node count
+        const activeCount = (nodeOnline[2] ? 1 : 0) + (nodeOnline[3] ? 1 : 0);
+        setText('dash-nodes-active', `${activeCount} / 2`);
+        setText('dash-nodes-sub', activeCount === 2 ? 'Semua node aktif ✓' : activeCount === 1 ? '1 node offline' : 'Semua node offline');
       });
 
-      // ===== QOS LISTENER =====
+      // ── QoS Data ──
       onValue(ref(db, `qos/node${n}`), snap => {
         const q = snap.val();
         if (!q) return;
+        setText(`mon-n${n}-qos-delay`, q.delay_ms + ' ms');
+        setText(`mon-n${n}-qos-avg`, 'Rata²: ' + (q.avg_delay_ms || '—') + ' ms');
 
-        // Update QoS panel
-        setText(`n${n}-qos-delay`, q.delay_ms + ' ms');
-        setText(`n${n}-qos-avg-delay`, 'Rata²: ' + q.avg_delay_ms + ' ms');
-        setText(`n${n}-qos-loss`, q.packet_loss.toFixed(1) + '%');
-        setText(`n${n}-qos-total-lost`, 'Total Lost: ' + (q.total_lost || 0));
-        setText(`n${n}-qos-thpt`, q.throughput + ' bps');
-        setText(`n${n}-qos-total-rx`, 'Total RX: ' + (q.total_rx || 0));
-        setText(`n${n}-qos-last-lost`, q.last_lost || '—');
+        const loss = parseFloat(q.packet_loss || 0).toFixed(1);
+        setText(`mon-n${n}-qos-loss`, loss + '%');
+        setText(`mon-n${n}-qos-lost-total`, 'Total: ' + (q.total_lost || 0) + ' paket');
+        setQosClass(`mon-n${n}-qos-loss-card`, loss);
 
-        // Tampilkan penyebab paket hilang
-        const causeMap = {
-          'relay': '⚡ Noise Relay/Pompa',
-          'collision': '💥 Tabrakan Sinyal Radio',
-          'jarak': '📡 Atenuasi Jarak/Penghalang'
-        };
-        const causeText = causeMap[q.loss_cause] || '—';
-        setText(`n${n}-qos-lost-count`, q.loss_cause ? causeText : 'Total: ' + (q.total_lost || 0) + ' paket');
-
-        // Update grafik Packet Loss
-        pushChartLoss(n, q.packet_loss);
-
-        // Update status bar with QoS data
-        const delayEl = document.getElementById(`n${n}-delay`);
-        const lossEl = document.getElementById(`n${n}-loss`);
-        const rxEl = document.getElementById(`n${n}-totalRx`);
-        if (delayEl) delayEl.textContent = q.delay_ms + ' ms';
-        if (lossEl) {
-          const pct = parseFloat(q.packet_loss).toFixed(1);
-          const cls = pct <= 5 ? 'loss-ok' : pct <= 20 ? 'loss-warn' : 'loss-bad';
-          lossEl.textContent = pct + '%';
-          lossEl.className = cls;
-        }
-        if (rxEl) rxEl.textContent = q.total_rx || 0;
-
-        // Log packet loss events dengan penyebab
-        if (q.last_lost && q.last_lost !== '—') {
-          const logCause = causeMap[q.loss_cause] || 'Tidak Diketahui';
-          addLog(`Node ${n}: Paket ${q.last_lost} Hilang — Sebab: ${logCause}`, 'warn');
-        }
-      });
-    });
-
-    // ===== MODE =====
-    window.setMode = function(nodeNum, mode) {
-      nodeMode[nodeNum] = mode;
-      const isManual = mode === 'manual';
-      document.getElementById(`n${nodeNum}-btn-auto`).className = 'mode-btn' + (!isManual ? ' active-auto' : '');
-      document.getElementById(`n${nodeNum}-btn-manual`).className = 'mode-btn' + (isManual ? ' active-manual' : '');
-      const badge = document.getElementById(`n${nodeNum}-mode-badge`);
-      badge.textContent = isManual ? 'MANUAL' : 'AUTO';
-      badge.className = `mode-badge ${isManual ? 'manual' : 'auto'}`;
-      setText(`n${nodeNum}-mode-text`, isManual ? 'MANUAL' : 'AUTO');
-      [1, 2].forEach(r => {
-        const tog = document.getElementById(`n${nodeNum}-toggle-${r}`);
-        const card = document.getElementById(`n${nodeNum}-relay-card-${r}`);
-        if (tog) tog.classList.toggle('disabled', !isManual);
-        if (card) card.classList.toggle('manual-mode', isManual);
+        setText(`mon-n${n}-qos-thpt`, (q.throughput || '—') + ' bps');
+        setText(`mon-n${n}-qos-rx`, 'Total RX: ' + (q.total_rx || 0));
       });
 
-      // Tulis mode ke Firebase → Python bridge akan mengirim AUTORESET/sync
-      set(ref(db, `mode/node${nodeNum}`), mode);
-
-      // Saat pindah ke AUTO, reset relay di Firebase agar tidak konflik
-      if (!isManual) {
-        set(ref(db, `relays/node${nodeNum}`), { r1: false, r2: false });
-      }
-
-      addLog(`Node${nodeNum} mode → ${isManual ? 'MANUAL' : 'AUTO'}`, isManual ? 'warn' : 'info');
-    };
-
-    // Init: baca mode dari Firebase saat halaman dimuat
-    // Fungsi internal untuk apply mode TANPA menulis balik ke Firebase
-    function applyModeUI(nodeNum, mode) {
-      nodeMode[nodeNum] = mode;
-      const isManual = mode === 'manual';
-      document.getElementById(`n${nodeNum}-btn-auto`).className = 'mode-btn' + (!isManual ? ' active-auto' : '');
-      document.getElementById(`n${nodeNum}-btn-manual`).className = 'mode-btn' + (isManual ? ' active-manual' : '');
-      const badge = document.getElementById(`n${nodeNum}-mode-badge`);
-      badge.textContent = isManual ? 'MANUAL' : 'AUTO';
-      badge.className = `mode-badge ${isManual ? 'manual' : 'auto'}`;
-      setText(`n${nodeNum}-mode-text`, isManual ? 'MANUAL' : 'AUTO');
-      [1, 2].forEach(r => {
-        const tog = document.getElementById(`n${nodeNum}-toggle-${r}`);
-        const card = document.getElementById(`n${nodeNum}-relay-card-${r}`);
-        if (tog) tog.classList.toggle('disabled', !isManual);
-        if (card) card.classList.toggle('manual-mode', isManual);
-      });
-    }
-
-    // Default: disabled semua toggle, lalu baca mode dari Firebase
-    [2, 3].forEach(n => {
-      [1, 2].forEach(r => {
-        const tog = document.getElementById(`n${n}-toggle-${r}`);
-        if (tog) tog.classList.add('disabled');
-      });
-      // Listener mode dari Firebase — restore mode saat reload halaman
+      // ── Mode ──
       onValue(ref(db, `mode/node${n}`), snap => {
         const mode = snap.val();
         if (mode) applyModeUI(n, mode);
       });
     });
 
-    // ===== RELAY =====
-    window.setRelay = function(nodeNum, key, state) {
-      if (nodeMode[nodeNum] !== 'manual') return;
-      set(ref(db, `relays/node${nodeNum}/${key}`), state);
-      const names = { r1: "Pompa Nutrisi", r2: "Kipas" };
-      addLog(`Node${nodeNum} ${names[key]} → ${state ? "NYALA" : "MATI"}`, state ? "ok" : "warn");
+    // ═══════════════════════════════════════════
+    //  MODE & RELAY CONTROL
+    // ═══════════════════════════════════════════
+    window.setMode = function(n, mode) {
+      nodeMode[n] = mode;
+      applyModeUI(n, mode);
+      set(ref(db, `mode/node${n}`), mode);
+      if (mode === 'auto') set(ref(db, `relays/node${n}`), { r1: false, r2: false });
+      addLog(`Node${n} mode → ${mode === 'manual' ? 'MANUAL' : 'AUTO'}`, mode === 'manual' ? 'warn' : 'info');
     };
 
-    // ===== NODE SWITCHER =====
-    window.switchNode = function(n) {
-      document.querySelectorAll('.node-panel').forEach(p => p.classList.remove('active'));
-      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-      document.getElementById(`panel-node${n}`).classList.add('active');
-      document.querySelectorAll('.tab-btn')[n - 2].classList.add('active');
-      // Resize charts setelah panel visible (Chart.js butuh container visible)
-      setTimeout(() => {
-        if (charts[`n${n}-temp-hum`]) charts[`n${n}-temp-hum`].resize();
-        if (charts[`n${n}-tds`])      charts[`n${n}-tds`].resize();
-        if (charts[`n${n}-loss`])     charts[`n${n}-loss`].resize();
-      }, 50);
+    function applyModeUI(n, mode) {
+      nodeMode[n] = mode;
+      const isManual = mode === 'manual';
+      const pre = 'ctrl-n' + n;
+      document.getElementById(`${pre}-btn-auto`).className = 'mode-btn' + (!isManual ? ' active-auto' : '');
+      document.getElementById(`${pre}-btn-manual`).className = 'mode-btn' + (isManual ? ' active-manual' : '');
+      const badge = document.getElementById(`${pre}-badge`);
+      badge.textContent = isManual ? 'MANUAL' : 'AUTO';
+      badge.className = `mode-badge ${isManual ? 'manual' : 'auto'}`;
+      setText(`${pre}-mode-text`, isManual ? 'MANUAL' : 'AUTO');
+      setText(`dash-n${n}-mode`, isManual ? 'MANUAL' : 'AUTO');
+      [1, 2].forEach(r => {
+        const tog = document.getElementById(`${pre}-toggle-${r}`);
+        if (tog) tog.classList.toggle('disabled', !isManual);
+      });
+    }
+
+    window.setRelay = function(n, key, state) {
+      if (nodeMode[n] !== 'manual') return;
+      set(ref(db, `relays/node${n}/${key}`), state);
+      const names = { r1: 'Pompa Nutrisi', r2: 'Kipas' };
+      addLog(`Node${n} ${names[key]} → ${state ? 'NYALA' : 'MATI'}`, state ? 'ok' : 'warn');
     };
 
-    // ===== UI HELPERS =====
-    function updateCard(n, key, val, min, max, warnLo, warnHi, labelFn) {
-      if (val == null || val === -99) {
-        updateCardRaw(n, key, "ERR", 0, "bad", "Sensor Error!");
-        return;
-      }
-      const pct = Math.min(100, Math.max(0, ((val - min) / (max - min)) * 100));
-      const cls = val < warnLo || val > warnHi ? "warn" : "ok";
-      const display = Number.isInteger(val) ? val : parseFloat(val).toFixed(1);
-      updateCardRaw(n, key, display, pct, cls, labelFn(val));
-    }
-
-    function updateCardRaw(n, key, display, pct, cls, statusText) {
-      setText(`n${n}-val-${key}`, display);
-      const bar = document.getElementById(`n${n}-bar-${key}`);
-      if (bar) bar.style.width = pct + "%";
-      const card = document.getElementById(`n${n}-card-${key}`);
-      if (card) card.className = "card " + cls;
-      setText(`n${n}-status-${key}`, statusText);
-    }
-
-    function updateRelayUI(n, num, active) {
-      const cb = document.getElementById(`n${n}-relay${num}`);
-      const card = document.getElementById(`n${n}-relay-card-${num}`);
-      const label = document.getElementById(`n${n}-relay-label-${num}`);
-      if (cb) cb.checked = !!active;
-      if (card) card.classList.toggle("active", !!active);
-      if (label) label.textContent = active ? "NYALA" : "MATI";
-    }
-
-    function setConn(live) {
-      document.getElementById("connDot").className = "conn-dot" + (live ? " live" : "");
-      setText("connText", live ? "Firebase Terhubung ✓" : "Terputus");
-    }
-
+    // ═══════════════════════════════════════════
+    //  UI HELPERS
+    // ═══════════════════════════════════════════
     function setText(id, val) {
       const el = document.getElementById(id);
       if (el) el.textContent = val;
     }
 
-    window.addLog = function(msg, type = "info") {
-      const box = document.getElementById("logBox");
-      const time = new Date().toLocaleTimeString("id-ID");
-      const div = document.createElement("div");
-      div.className = "log-entry";
+    function updateSensorCard(n, key, val, min, max, warnLo, warnHi, labelFn) {
+      const pre = `mon-n${n}`;
+      if (val == null || val === -99) {
+        setText(`${pre}-val-${key}`, 'ERR');
+        const card = document.getElementById(`${pre}-card-${key}`);
+        if (card) card.className = 'sensor-card bad';
+        setText(`${pre}-status-${key}`, 'Sensor Error!');
+        return;
+      }
+      const pct = Math.min(100, Math.max(0, ((val - min) / (max - min)) * 100));
+      const cls = val < warnLo || val > warnHi ? 'warn' : 'ok';
+      const display = Number.isInteger(val) ? val : parseFloat(val).toFixed(1);
+      setText(`${pre}-val-${key}`, display);
+      const bar = document.getElementById(`${pre}-bar-${key}`);
+      if (bar) bar.style.width = pct + '%';
+      const card = document.getElementById(`${pre}-card-${key}`);
+      if (card) card.className = 'sensor-card ' + cls;
+      setText(`${pre}-status-${key}`, labelFn(val));
+    }
+
+    function resetSensorCards(n) {
+      const pre = `mon-n${n}`;
+      ['temp', 'hum', 'tds'].forEach(key => {
+        setText(`${pre}-val-${key}`, '—');
+        setText(`${pre}-status-${key}`, 'Offline');
+        const bar = document.getElementById(`${pre}-bar-${key}`);
+        if (bar) bar.style.width = '0%';
+        const card = document.getElementById(`${pre}-card-${key}`);
+        if (card) card.className = 'sensor-card offline';
+      });
+      setText(`${pre}-seq`, '—');
+      setText(`${pre}-time`, 'Offline');
+    }
+
+    function updateNodeStatusUI(n, online, lastSeen) {
+      // Monitoring page
+      const monDot = document.getElementById(`mon-n${n}-dot`);
+      const monLabel = document.getElementById(`mon-n${n}-label`);
+      if (monDot) monDot.className = `status-dot ${online ? 'online' : 'offline'}`;
+      if (monLabel) {
+        monLabel.textContent = online ? `Node ${n} Terhubung ✓` : `Node ${n} Offline`;
+        monLabel.className = `status-text ${online ? 'online' : 'offline'}`;
+      }
+      // Dashboard
+      const dashDot = document.getElementById(`dash-n${n}-dot`);
+      const dashLabel = document.getElementById(`dash-n${n}-label`);
+      if (dashDot) dashDot.className = `status-dot ${online ? 'online' : 'offline'}`;
+      if (dashLabel) {
+        dashLabel.textContent = online ? `Node ${n} — Terhubung ✓` : `Node ${n} — Offline`;
+        dashLabel.className = `status-text ${online ? 'online' : 'offline'}`;
+      }
+      // Gateway & Firebase status
+      setText('dash-gw-status', online ? 'Online' : '—');
+      setText('dash-gw-sub', online ? 'Gateway terhubung' : 'Menunggu...');
+      setText('dash-fb-status', 'Terhubung');
+      setText('dash-fb-sub', 'Real-time Database aktif');
+    }
+
+    function updateRelayUI(n, num, active) {
+      const cb = document.getElementById(`ctrl-n${n}-r${num}`);
+      const card = document.getElementById(`ctrl-n${n}-relay-${num}`);
+      const label = document.getElementById(`ctrl-n${n}-relay-label-${num}`);
+      if (cb) cb.checked = !!active;
+      if (card) card.classList.toggle('active', !!active);
+      if (label) label.textContent = active ? 'NYALA' : 'MATI';
+    }
+
+    function setConn(live) {
+      document.getElementById('connDot').className = 'firebase-dot' + (live ? ' live' : '');
+      setText('connText', live ? 'Firebase Terhubung ✓' : 'Terputus');
+    }
+
+    function setQosClass(cardId, lossVal) {
+      const card = document.getElementById(cardId);
+      if (!card) return;
+      const v = parseFloat(lossVal);
+      card.className = 'qos-card ' + (v <= 5 ? 'good' : v <= 20 ? 'fair' : 'poor');
+    }
+
+    window.addLog = function(msg, type = 'info') {
+      const box = document.getElementById('logBox');
+      const time = new Date().toLocaleTimeString('id-ID');
+      const div = document.createElement('div');
+      div.className = 'log-entry';
       div.innerHTML = `<span class="log-time">${time}</span><span class="log-${type}">${msg}</span>`;
       box.prepend(div);
       while (box.children.length > 60) box.removeChild(box.lastChild);
     };
 
-    // ===== INIT =====
+    // ═══════════════════════════════════════════
+    //  INIT
+    // ═══════════════════════════════════════════
     if (typeof Chart !== 'undefined') {
       initCharts();
-      // Muat data history dari Firebase saat dashboard pertama dibuka
-      loadHistory().then(() => {
-        addLog("Grafik siap — data history dimuat dari Firebase", "ok");
-      });
+      loadHistory().then(() => addLog('Grafik siap — data history dimuat', 'ok'));
     } else {
-      addLog("Chart.js gagal dimuat — grafik tidak aktif", "err");
+      addLog('Chart.js gagal dimuat', 'err');
     }
-    addLog("HydroIoT Dashboard aktif — Node 2 & 3", "info");
-    addLog("Mode default: AUTO — tekan Manual untuk kontrol relay", "warn");
+    addLog('HydroIoT Dashboard aktif — Node 2 & 3', 'info');
+    addLog('Mode default: AUTO — tekan Manual untuk kontrol relay', 'warn');
   </script>
 </body>
 </html>

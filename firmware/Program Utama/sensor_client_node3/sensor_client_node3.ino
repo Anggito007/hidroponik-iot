@@ -48,6 +48,11 @@
 #define LORA_CHAN  0x17
 #define SEND_MS    5000
 
+// ─── DHT22 Kalibrasi ────────────────────────────────────────
+// Offset suhu hasil kalibrasi terhadap termometer referensi
+// Referensi: 26.2°C | DHT22: 23.0°C | Offset: +3.2°C
+#define DHT_TEMP_OFFSET  3.2f
+
 // ─── Objects ────────────────────────────────────────────────
 HardwareSerial e32Serial(2);
 LoRa_E32 e32(&e32Serial, AUX_PIN, M0_PIN, M1_PIN);
@@ -205,7 +210,7 @@ void relaySelfTest() {
 void sampleSensors() {
   float t = dht.readTemperature();
   float h = dht.readHumidity();
-  if (!isnan(t)) curTemp = t;
+  if (!isnan(t)) curTemp = t + DHT_TEMP_OFFSET;  // Koreksi kalibrasi DHT22
   if (!isnan(h)) curHum  = h;
 
   analogSetPinAttenuation(TDS_PIN, ADC_11db);
@@ -411,7 +416,19 @@ void setup() {
   cfg.OPTION.fixedTransmission = FT_FIXED_TRANSMISSION;
   cfg.OPTION.fec = FEC_1_ON;
   cfg.OPTION.transmissionPower = POWER_20;
-  cfg.SPED.airDataRate = AIR_DATA_RATE_010_24;
+  // ════════════════════════════════════════════════════
+  //  UBAH AIR DATA RATE DI SINI ◄─────────────────────
+  //  (Harus sama di Gateway, Node 2, dan Node 3!)
+  //
+  //  Pilihan (makin kecil = makin jauh jangkauan):
+  //    AIR_DATA_RATE_000_03  →   0.3 kbps  | Sangat jauh  | -138 dBm
+  //    AIR_DATA_RATE_001_12  →   1.2 kbps  | Jauh         | -134 dBm ← AKTIF
+  //    AIR_DATA_RATE_010_24  →   2.4 kbps  | Normal       | -131 dBm
+  //    AIR_DATA_RATE_011_48  →   4.8 kbps  | Sedang       | -128 dBm
+  //    AIR_DATA_RATE_100_96  →   9.6 kbps  | Dekat        | -125 dBm
+  //    AIR_DATA_RATE_101_192 →  19.2 kbps  | Sangat Dekat | -121 dBm
+  // ════════════════════════════════════════════════════
+  cfg.SPED.airDataRate = AIR_DATA_RATE_001_12;  // ← Ubah nilai ini
   cfg.SPED.uartBaudRate = UART_BPS_9600;
   cfg.SPED.uartParity = MODE_00_8N1;
   e32.setConfiguration(cfg, WRITE_CFG_PWR_DWN_LOSE);
@@ -422,8 +439,8 @@ void setup() {
   txTemp = curTemp; txHum = curHum;
   txVolt = curVolt; txPpm = curPpm; txTds = (int)txPpm;
 
-  // ── Relay self-test ──
-  relaySelfTest();
+  // ── Relay self-test (DIMATIKAN — berbahaya untuk sistem produksi) ──
+  // relaySelfTest();  // Pompa/Kipas bisa menyala sendiri saat mati lampu
 
   // ── Ready ──
   Serial.printf("[BOOT] AUX=%d | Node3 Ready (direct-UART + relay driver)\n",
@@ -432,6 +449,10 @@ void setup() {
   lcd.clear();
   lcd.setCursor(0, 0); lcd.print("Node3 Ready");
   lcd.setCursor(0, 1); lcd.print("Relay OK");
+
+  // ── Anti-Collision Jitter: Node 3 mulai di offset acak 1500-2500ms ──
+  // Rentang berbeda dari Node 2 (0-500ms) agar tidak memancar bersamaan
+  delay(random(1500, 2500));
 }
 
 // ════════════════════════════════════════════════════════════

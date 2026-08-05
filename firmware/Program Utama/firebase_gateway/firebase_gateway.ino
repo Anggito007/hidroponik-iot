@@ -58,12 +58,16 @@
 
 // ─── Timing (ms) ────────────────────────────────────────────
 #define OLED_INTERVAL       3000
-#define RELAY_POLL_INTERVAL 3000
-#define MODE_POLL_INTERVAL  5000
-#define WATCHDOG_INTERVAL   10000
+#define RELAY_POLL_INTERVAL 5000    // Cek saklar web setiap 5 detik
+#define MODE_POLL_INTERVAL  10000   // Cek mode auto/manual setiap 10 detik
+#define WATCHDOG_INTERVAL   15000
 #define WIFI_CHECK_INTERVAL 30000
 #define HISTORY_INTERVAL    60000   // Push history setiap 60 detik
 #define NODE_OFFLINE_SEC    60      // Node offline setelah 60 detik
+#define FIREBASE_UPLOAD_INTERVAL 1500  // Upload sensor ke Firebase setiap 1.5 detik
+#define AUTO_SYNC_INTERVAL  2000    // Auto-Sync independen setiap 2 detik
+#define CMD_REPEAT_COUNT    3       // Kirim CMD 3x berturut untuk mengatasi packet loss
+#define CMD_REPEAT_DELAY_MS 150     // Jeda antar pengiriman CMD berulang (ms)
 
 // ─── Objects ────────────────────────────────────────────────
 HardwareSerial e32Serial(2);
@@ -89,9 +93,12 @@ unsigned long lastRelayPoll = 0;
 unsigned long lastModePoll  = 0;
 unsigned long lastWatchdog  = 0;
 unsigned long lastWifiCheck = 0;
+unsigned long lastAutoSync  = 0;  // Timer Auto-Sync independen
 unsigned long lastHistory[4] = {0, 0, 0, 0};
 unsigned long lastCmdTime[4] = {0, 0, 0, 0};  // Waktu terakhir kirim CMD/SETMODE
 unsigned long lastLossTime[4] = {0, 0, 0, 0}; // Waktu terakhir terjadi packet loss
+unsigned long lastFirebaseUpload = 0;  // Timer upload deferred
+bool pendingUpload[4] = {false, false, false, false}; // Flag: data siap upload
 
 // Per-node state
 struct NodeState {
@@ -195,108 +202,127 @@ String firebaseGet(const char* path) {
 }
 
 // ════════════════════════════════════════════════════════════
-//  Push Sensor Data ke Firebase
+//  Firebase Upload — Step-based (1 HTTP call per step)
 // ════════════════════════════════════════════════════════════
+// Step 0 = idle, 1 = sensor, 2 = qos, 3 = history, 4 = status
+int uploadStep[4] = {0, 0, 0, 0};
+unsigned long uploadTimestamp[4] = {0, 0, 0, 0};  // cached timestamp
+char uploadTimeBuf[4][12] = {"00:00:00", "00:00:00", "00:00:00", "00:00:00"};
 
-void pushSensorToFirebase(int node) {
+// Mulai proses upload (dipanggil dari loop saat pendingUpload=true)
+void startUpload(int node) {
   if (node < 2 || node > 3) return;
-  NodeState& n = ns[node];
-
-  // Get current time
+  // Cache timestamp sekali saja di awal upload
   struct tm timeinfo;
-  char timeBuf[12] = "00:00:00";
-  unsigned long tsMs = millis();  // fallback
+  uploadTimestamp[node] = millis();
+  strcpy(uploadTimeBuf[node], "00:00:00");
   if (getLocalTime(&timeinfo, 100)) {
-    strftime(timeBuf, sizeof(timeBuf), "%H:%M:%S", &timeinfo);
-    // Epoch ms
+    strftime(uploadTimeBuf[node], 12, "%H:%M:%S", &timeinfo);
     time_t now = mktime(&timeinfo);
-    tsMs = (unsigned long)now * 1000UL;
+    uploadTimestamp[node] = (unsigned long)now * 1000UL;
   }
+  uploadStep[node] = 1;  // Mulai dari step 1 (sensor)
+}
 
-  // Build JSON for /sensors/nodeX (live, overwrite)
-  // Payload berisi 8 field esensial untuk dashboard.
-  // Data QoS dikirim terpisah ke /qos/nodeX.
-  StaticJsonDocument<192> doc;
-  doc["node"]         = node;
-  doc["seq"]          = n.seq;
-  doc["temp"]         = n.temp;
-  doc["hum"]          = n.hum;
-  doc["tds"]          = n.tds;
-  doc["r1"]           = n.r1 ? true : false;
-  doc["r2"]           = n.r2 ? true : false;
-  doc["timestamp_ms"] = tsMs;
-
-  // Internal-only calculations (tidak masuk Firebase, tetap dipakai)
-  float lossRate = (totalRx > 0)
-    ? (float)n.lostPackets / (float)(n.lostPackets + n.seq) * 100.0f
-    : 0.0f;
-  // lossRate, n.tdsRaw, totalRx, n.nodeMillis, timeBuf — masih tersedia di memori.
-
-  String json;
-  serializeJson(doc, json);
-
-  // Push to /sensors/nodeX
+// Jalankan 1 step upload (dipanggil dari loop, return true jika masih ada step)
+bool runUploadStep(int node) {
+  if (node < 2 || node > 3) return false;
+  NodeState& n = ns[node];
+  unsigned long tsMs = uploadTimestamp[node];
   char path[32];
-  snprintf(path, sizeof(path), "sensors/node%d", node);
-  bool ok = firebasePut(path, json);
 
-  Serial.printf("[Firebase] %s node%d: %s\n", ok ? "✓" : "✗", node,
-    ok ? "OK" : "FAIL");
+  switch (uploadStep[node]) {
 
-  // Push to /history/nodeX (setiap HISTORY_INTERVAL)
-  if (millis() - lastHistory[node] >= HISTORY_INTERVAL) {
-    lastHistory[node] = millis();
+    case 1: {  // Step 1: Push sensor data ke /sensors/nodeX
+      StaticJsonDocument<192> doc;
+      doc["node"]         = node;
+      doc["seq"]          = n.seq;
+      doc["temp"]         = n.temp;
+      doc["hum"]          = n.hum;
+      doc["tds"]          = n.tds;
+      doc["r1"]           = n.r1 ? true : false;
+      doc["r2"]           = n.r2 ? true : false;
+      doc["timestamp_ms"] = tsMs;
 
-    StaticJsonDocument<256> hist;
-    hist["temp"]         = n.temp;
-    hist["hum"]          = n.hum;
-    hist["tds"]          = n.tds;
-    hist["timestamp_ms"] = tsMs;
+      String json;
+      serializeJson(doc, json);
+      snprintf(path, sizeof(path), "sensors/node%d", node);
+      bool ok = firebasePut(path, json);
+      Serial.printf("[Firebase] %s node%d: %s\n", ok ? "✓" : "✗", node,
+        ok ? "OK" : "FAIL");
 
-    String histJson;
-    serializeJson(hist, histJson);
-
-    snprintf(path, sizeof(path), "history/node%d", node);
-    bool hOk = firebasePost(path, histJson);
-    Serial.printf("[History] %s node%d\n", hOk ? "✓" : "✗", node);
-  }
-
-  // Update status
-  if (!n.online) {
-    n.online = true;
-    snprintf(path, sizeof(path), "status/node%d", node);
-    StaticJsonDocument<128> statusDoc;
-    statusDoc["online"]    = true;
-    statusDoc["last_seen"] = timeBuf;
-    String statusJson;
-    serializeJson(statusDoc, statusJson);
-    firebasePut(path, statusJson);
-    Serial.printf("[Status] Node%d ONLINE\n", node);
-  }
-
-  // Push QoS data to /qos/nodeX
-  if (n.totalReceived > 0) {
-    StaticJsonDocument<256> qosDoc;
-    qosDoc["delay_ms"]     = n.lastDelay;
-    qosDoc["avg_delay_ms"] = (int)(n.avgDelay + 0.5f);
-    qosDoc["packet_loss"]  = round(n.packetLoss * 10.0f) / 10.0f;
-    qosDoc["throughput"]   = (int)(n.throughput + 0.5f);
-    qosDoc["total_rx"]     = n.totalReceived;
-    qosDoc["total_lost"]   = n.lostPackets;
-    if (strlen(n.lastLost) > 0) {
-      qosDoc["last_lost"] = n.lastLost;
+      uploadStep[node] = 2;  // Lanjut ke QoS
+      return true;
     }
-    if (strlen(n.lossCause) > 0) {
-      qosDoc["loss_cause"] = n.lossCause;
+
+    case 2: {  // Step 2: Push QoS data ke /qos/nodeX
+      if (n.totalReceived > 0) {
+        StaticJsonDocument<256> qosDoc;
+        qosDoc["delay_ms"]     = n.lastDelay;
+        qosDoc["avg_delay_ms"] = (int)(n.avgDelay + 0.5f);
+        qosDoc["packet_loss"]  = round(n.packetLoss * 10.0f) / 10.0f;
+        qosDoc["throughput"]   = (int)(n.throughput + 0.5f);
+        qosDoc["total_rx"]     = n.totalReceived;
+        qosDoc["total_lost"]   = n.lostPackets;
+        if (strlen(n.lastLost) > 0) {
+          qosDoc["last_lost"] = n.lastLost;
+        }
+        if (strlen(n.lossCause) > 0) {
+          qosDoc["loss_cause"] = n.lossCause;
+        }
+        qosDoc["timestamp_ms"] = tsMs;
+
+        String qosJson;
+        serializeJson(qosDoc, qosJson);
+        snprintf(path, sizeof(path), "qos/node%d", node);
+        bool qOk = firebasePut(path, qosJson);
+        Serial.printf("[QoS] %s node%d\n", qOk ? "✓" : "✗", node);
+      }
+
+      uploadStep[node] = 3;  // Lanjut ke history check
+      return true;
     }
-    qosDoc["timestamp_ms"] = tsMs;
 
-    String qosJson;
-    serializeJson(qosDoc, qosJson);
+    case 3: {  // Step 3: Push history (hanya setiap HISTORY_INTERVAL)
+      if (millis() - lastHistory[node] >= HISTORY_INTERVAL) {
+        lastHistory[node] = millis();
+        StaticJsonDocument<256> hist;
+        hist["temp"]         = n.temp;
+        hist["hum"]          = n.hum;
+        hist["tds"]          = n.tds;
+        hist["timestamp_ms"] = tsMs;
 
-    snprintf(path, sizeof(path), "qos/node%d", node);
-    bool qOk = firebasePut(path, qosJson);
-    Serial.printf("[QoS] %s node%d\n", qOk ? "✓" : "✗", node);
+        String histJson;
+        serializeJson(hist, histJson);
+        snprintf(path, sizeof(path), "history/node%d", node);
+        bool hOk = firebasePost(path, histJson);
+        Serial.printf("[History] %s node%d\n", hOk ? "✓" : "✗", node);
+      }
+
+      uploadStep[node] = 4;  // Lanjut ke status check
+      return true;
+    }
+
+    case 4: {  // Step 4: Update status online (hanya sekali saat pertama kali)
+      if (!n.online) {
+        n.online = true;
+        snprintf(path, sizeof(path), "status/node%d", node);
+        StaticJsonDocument<128> statusDoc;
+        statusDoc["online"]    = true;
+        statusDoc["last_seen"] = uploadTimeBuf[node];
+        String statusJson;
+        serializeJson(statusDoc, statusJson);
+        firebasePut(path, statusJson);
+        Serial.printf("[Status] Node%d ONLINE\n", node);
+      }
+
+      uploadStep[node] = 0;  // Selesai! Kembali ke idle
+      return false;
+    }
+
+    default:
+      uploadStep[node] = 0;
+      return false;
   }
 }
 
@@ -417,139 +443,142 @@ void processLoRa(char* msg) {
   Serial.printf("[QoS] N%d Delay:%lums Avg:%.0fms Loss:%.1f%% Thpt:%.0fbps\n",
     node, n.lastDelay, n.avgDelay, n.packetLoss, n.throughput);
 
-  // Push to Firebase immediately
-  if (wifiOk) {
-    pushSensorToFirebase(node);
-  }
+  // Tandai data siap upload (TIDAK langsung panggil Firebase di sini)
+  // Firebase upload akan dilakukan di loop() secara terpisah
+  pendingUpload[node] = true;
 
-  // ── Auto-Sync Feedback Loop ──
-  // Bandingkan status fisik relay Node vs perintah Web (Firebase)
-  // Jika tidak cocok, kirim ulang CMD secara otomatis
-  if (nodeMode[node] == "manual" && wifiOk) {
-    char path[32];
-    snprintf(path, sizeof(path), "relays/node%d", node);
-    String resp = firebaseGet(path);
-    if (resp.length() > 0 && resp != "null") {
-      StaticJsonDocument<128> doc;
-      if (deserializeJson(doc, resp) == DeserializationError::Ok) {
-        int webR1 = doc["r1"] ? 1 : 0;
-        int webR2 = doc["r2"] ? 1 : 0;
-
-        // Sync Relay 1: Web minta ON tapi fisik Node masih OFF (atau sebaliknya)
-        if (webR1 != n.r1) {
-          char cmd[30];
-          snprintf(cmd, sizeof(cmd), "CMD:%d:R1:%d", node, webR1);
-          for (int retry = 0; retry < 3; retry++) {
-            e32.sendFixedMessage(0x00, node, LORA_CHAN, cmd);
-            if (retry < 2) delay(500);
-          }
-          Serial.printf("[SYNC] N%d R1: web=%d fisik=%d → kirim ulang CMD (3x)\n",
-            node, webR1, n.r1);
-        }
-
-        // Sync Relay 2: Web minta ON tapi fisik Node masih OFF (atau sebaliknya)
-        if (webR2 != n.r2) {
-          char cmd[30];
-          snprintf(cmd, sizeof(cmd), "CMD:%d:R2:%d", node, webR2);
-          for (int retry = 0; retry < 3; retry++) {
-            e32.sendFixedMessage(0x00, node, LORA_CHAN, cmd);
-            if (retry < 2) delay(500);
-          }
-          Serial.printf("[SYNC] N%d R2: web=%d fisik=%d → kirim ulang CMD (3x)\n",
-            node, webR2, n.r2);
-        }
-      }
-    }
-  }
+  // Auto-Sync dipindahkan ke loop() sebagai timer independen (PRIORITAS 3)
+  // Tidak lagi bergantung pada kedatangan paket telemetry
 }
 
 // ════════════════════════════════════════════════════════════
-//  Poll Firebase — Relay Control
+//  Poll Firebase — Relay Control (PRIORITAS 1: Cek KEDUA node sekaligus)
 // ════════════════════════════════════════════════════════════
+
+// Helper: kirim CMD 3x berturut dengan jeda 150ms (PRIORITAS 2)
+void sendCmdReliable(int node, const char* cmd) {
+  for (int i = 0; i < CMD_REPEAT_COUNT; i++) {
+    e32.sendFixedMessage(0x00, node, LORA_CHAN, cmd);
+    if (i < CMD_REPEAT_COUNT - 1) delay(CMD_REPEAT_DELAY_MS);
+  }
+  Serial.printf("[Relay] %s (x%d)\n", cmd, CMD_REPEAT_COUNT);
+  lastCmdTime[node] = millis();
+}
+
+void pollRelayForNode(int node) {
+  // Only poll if mode is "manual"
+  if (nodeMode[node] != "manual") return;
+
+  char path[32];
+  snprintf(path, sizeof(path), "relays/node%d", node);
+  String resp = firebaseGet(path);
+  if (resp.length() == 0 || resp == "null") return;
+
+  StaticJsonDocument<128> doc;
+  if (deserializeJson(doc, resp) != DeserializationError::Ok) return;
+
+  RelayTrack& rt = relayTrack[node];
+  int r1 = doc["r1"] ? 1 : 0;
+  int r2 = doc["r2"] ? 1 : 0;
+
+  if (!rt.initialized) {
+    rt.r1p = r1; rt.r2p = r2;
+    rt.initialized = true;
+  }
+
+  // Send LoRa command if state changed (3x kirim untuk keandalan)
+  char cmd[30];
+  if (r1 != rt.r1p) {
+    snprintf(cmd, sizeof(cmd), "CMD:%d:R1:%d", node, r1);
+    sendCmdReliable(node, cmd);
+    rt.r1p = r1;
+  }
+  if (r2 != rt.r2p) {
+    snprintf(cmd, sizeof(cmd), "CMD:%d:R2:%d", node, r2);
+    sendCmdReliable(node, cmd);
+    rt.r2p = r2;
+  }
+}
 
 void pollRelays() {
-  for (int node = 2; node <= 3; node++) {
-    // Only poll if mode is "manual"
-    if (nodeMode[node] != "manual") continue;
+  // PRIORITAS 1: Cek KEDUA node sekaligus (tidak lagi round-robin)
+  pollRelayForNode(2);
+  pollRelayForNode(3);
+}
 
-    char path[32];
-    snprintf(path, sizeof(path), "relays/node%d", node);
-    String resp = firebaseGet(path);
-    if (resp.length() == 0 || resp == "null") continue;
+// ════════════════════════════════════════════════════════════
+//  Poll Firebase — Mode Control (Cek KEDUA node sekaligus)
+// ════════════════════════════════════════════════════════════
 
-    StaticJsonDocument<128> doc;
-    if (deserializeJson(doc, resp) != DeserializationError::Ok) continue;
+void pollModeForNode(int node) {
+  char path[32];
+  snprintf(path, sizeof(path), "mode/node%d", node);
+  String resp = firebaseGet(path);
+  if (resp.length() == 0 || resp == "null") return;
 
-    RelayTrack& rt = relayTrack[node];
-    int r1 = doc["r1"] ? 1 : 0;
-    int r2 = doc["r2"] ? 1 : 0;
+  // Remove quotes from JSON string: "auto" → auto
+  resp.replace("\"", "");
+  resp.trim();
 
-    if (!rt.initialized) {
-      rt.r1p = r1; rt.r2p = r2;
-      rt.initialized = true;
-    }
+  if (resp != nodeMode[node]) {
+    String oldMode = nodeMode[node];
+    nodeMode[node] = resp;
+    Serial.printf("[Mode] Node%d: %s → %s\n", node,
+      oldMode.c_str(), resp.c_str());
 
-    // Send LoRa command if state changed (with retry for reliability)
+    // Send SETMODE to node via LoRa (3x kirim untuk keandalan)
     char cmd[30];
-    if (r1 != rt.r1p) {
-      snprintf(cmd, sizeof(cmd), "CMD:%d:R1:%d", node, r1);
-      for (int retry = 0; retry < 3; retry++) {
-        e32.sendFixedMessage(0x00, node, LORA_CHAN, cmd);
-        if (retry < 2) delay(500);  // Jeda 500ms antar retry
-      }
-      Serial.printf("[Relay] %s (3x retry)\n", cmd);
-      lastCmdTime[node] = millis();
-      rt.r1p = r1;
-    }
-    if (r2 != rt.r2p) {
-      snprintf(cmd, sizeof(cmd), "CMD:%d:R2:%d", node, r2);
-      for (int retry = 0; retry < 3; retry++) {
-        e32.sendFixedMessage(0x00, node, LORA_CHAN, cmd);
-        if (retry < 2) delay(500);  // Jeda 500ms antar retry
-      }
-      Serial.printf("[Relay] %s (3x retry)\n", cmd);
-      lastCmdTime[node] = millis();
-      rt.r2p = r2;
+    int modeVal = (resp == "manual") ? 1 : 0;
+    snprintf(cmd, sizeof(cmd), "SETMODE:%d:%d", node, modeVal);
+    sendCmdReliable(node, cmd);
+
+    // If switching to manual, reset relay tracking
+    if (resp == "manual") {
+      relayTrack[node].initialized = false;
     }
   }
 }
 
-// ════════════════════════════════════════════════════════════
-//  Poll Firebase — Mode Control
-// ════════════════════════════════════════════════════════════
-
 void pollMode() {
+  // Cek KEDUA node sekaligus (tidak lagi round-robin)
+  pollModeForNode(2);
+  pollModeForNode(3);
+}
+
+// ════════════════════════════════════════════════════════════
+//  Auto-Sync Independen (PRIORITAS 3: Timer mandiri di loop)
+// ════════════════════════════════════════════════════════════
+//  Bandingkan status fisik relay Node (dari telemetry terakhir)
+//  vs perintah Web (dari RAM relayTrack).
+//  Jalan setiap 2 detik, TIDAK bergantung pada kedatangan paket.
+
+void runAutoSync() {
   for (int node = 2; node <= 3; node++) {
-    char path[32];
-    snprintf(path, sizeof(path), "mode/node%d", node);
-    String resp = firebaseGet(path);
-    if (resp.length() == 0 || resp == "null") continue;
+    NodeState& n = ns[node];
+    RelayTrack& rt = relayTrack[node];
 
-    // Remove quotes from JSON string: "auto" → auto
-    resp.replace("\"", "");
-    resp.trim();
+    // Syarat: mode manual, relay tracking sudah ada, dan grace period 4 detik
+    if (nodeMode[node] != "manual") continue;
+    if (!rt.initialized) continue;
+    if (n.seen == 0) continue;  // Belum pernah terima data dari node ini
+    if (millis() - lastCmdTime[node] < 4000) continue;  // Grace period
 
-    if (resp != nodeMode[node]) {
-      String oldMode = nodeMode[node];
-      nodeMode[node] = resp;
-      Serial.printf("[Mode] Node%d: %s → %s\n", node,
-        oldMode.c_str(), resp.c_str());
-
-      // Send SETMODE to node via LoRa (3x retry for reliability)
+    // Sync Relay 1: Web minta ON tapi fisik Node masih OFF (atau sebaliknya)
+    if (rt.r1p != n.r1) {
       char cmd[30];
-      int modeVal = (resp == "manual") ? 1 : 0;
-      snprintf(cmd, sizeof(cmd), "SETMODE:%d:%d", node, modeVal);
-      for (int retry = 0; retry < 3; retry++) {
-        e32.sendFixedMessage(0x00, node, LORA_CHAN, cmd);
-        if (retry < 2) delay(500);
-      }
-      Serial.printf("[Mode] %s (3x retry)\n", cmd);
-      lastCmdTime[node] = millis();
+      snprintf(cmd, sizeof(cmd), "CMD:%d:R1:%d", node, rt.r1p);
+      sendCmdReliable(node, cmd);
+      Serial.printf("[SYNC] N%d R1: web=%d fisik=%d → kirim ulang CMD (x%d)\n",
+        node, rt.r1p, n.r1, CMD_REPEAT_COUNT);
+    }
 
-      // If switching to manual, reset relay tracking
-      if (resp == "manual") {
-        relayTrack[node].initialized = false;
-      }
+    // Sync Relay 2: Web minta ON tapi fisik Node masih OFF (atau sebaliknya)
+    if (rt.r2p != n.r2) {
+      char cmd[30];
+      snprintf(cmd, sizeof(cmd), "CMD:%d:R2:%d", node, rt.r2p);
+      sendCmdReliable(node, cmd);
+      Serial.printf("[SYNC] N%d R2: web=%d fisik=%d → kirim ulang CMD (x%d)\n",
+        node, rt.r2p, n.r2, CMD_REPEAT_COUNT);
     }
   }
 }
@@ -593,14 +622,28 @@ void checkWatchdog() {
 
 void checkWifi() {
   bool connected = (WiFi.status() == WL_CONNECTED);
+
   if (connected && !wifiOk) {
+    // Baru saja terhubung (baik saat boot maupun reconnnect belakangan)
     wifiOk = true;
-    Serial.printf("[WiFi] Reconnected: %s IP:%s\n",
+    Serial.printf("[WiFi] Connected: %s IP:%s\n",
       WiFi.SSID().c_str(), WiFi.localIP().toString().c_str());
-  } else if (!connected && wifiOk) {
-    wifiOk = false;
-    Serial.println("[WiFi] Disconnected — will auto-reconnect");
-    WiFi.reconnect();
+    // Sync NTP saat pertama terhubung (penting untuk timestamp Firebase)
+    configTime(7 * 3600, 0, "pool.ntp.org", "time.nist.gov");
+    Serial.println("[NTP] Syncing time (WIB +7)...");
+
+  } else if (!connected) {
+    // WiFi putus ATAU belum pernah konek sejak boot
+    // → Aktif coba reconnect setiap kali checkWifi() dipanggil (setiap 30 detik)
+    if (wifiOk) {
+      wifiOk = false;
+      Serial.println("[WiFi] Disconnected — retrying...");
+    } else {
+      Serial.println("[WiFi] Not connected — retrying...");
+    }
+    WiFi.disconnect(false);   // Putus dulu tanpa hapus kredensial
+    delay(100);
+    WiFi.begin();             // Coba reconnect dengan SSID tersimpan terakhir
   }
 }
 
@@ -765,7 +808,19 @@ void setup() {
   cfg.OPTION.fixedTransmission = FT_FIXED_TRANSMISSION;
   cfg.OPTION.fec = FEC_1_ON;
   cfg.OPTION.transmissionPower = POWER_20;
-  cfg.SPED.airDataRate = AIR_DATA_RATE_010_24;
+  // ════════════════════════════════════════════════════
+  //  UBAH AIR DATA RATE DI SINI ◄─────────────────────
+  //  (Harus sama di Gateway, Node 2, dan Node 3!)
+  //
+  //  Pilihan (makin kecil = makin jauh jangkauan):
+  //    AIR_DATA_RATE_000_03  →   0.3 kbps  | Sangat jauh  | -138 dBm
+  //    AIR_DATA_RATE_001_12  →   1.2 kbps  | Jauh         | -134 dBm ← AKTIF
+  //    AIR_DATA_RATE_010_24  →   2.4 kbps  | Normal       | -131 dBm
+  //    AIR_DATA_RATE_011_48  →   4.8 kbps  | Sedang       | -128 dBm
+  //    AIR_DATA_RATE_100_96  →   9.6 kbps  | Dekat        | -125 dBm
+  //    AIR_DATA_RATE_101_192 →  19.2 kbps  | Sangat Dekat | -121 dBm
+  // ════════════════════════════════════════════════════
+  cfg.SPED.airDataRate = AIR_DATA_RATE_001_12;  // ← Ubah nilai ini
   cfg.SPED.uartBaudRate = UART_BPS_9600;
   cfg.SPED.uartParity = MODE_00_8N1;
   e32.setConfiguration(cfg, WRITE_CFG_PWR_DWN_LOSE);
@@ -787,10 +842,7 @@ void setup() {
     wifiOk = true;
     Serial.printf("[WiFi] Connected: %s IP:%s\n",
       WiFi.SSID().c_str(), WiFi.localIP().toString().c_str());
-
-    // Sync time via NTP (untuk timestamp)
-    configTime(7 * 3600, 0, "pool.ntp.org", "time.nist.gov");
-    Serial.println("[NTP] Syncing time (WIB +7)...");
+    // NTP sync ditangani oleh checkWifi() saat koneksi terdeteksi
   } else {
     Serial.println("[WiFi] Not connected — LoRa-only mode");
   }
@@ -823,7 +875,7 @@ void loop() {
     }
   }
 
-  // ── 2. LoRa RX ──
+  // ── 2. LoRa RX (PRIORITAS TERTINGGI — tidak boleh diblokir) ──
   if (e32.available() > 1) {
     ResponseContainer rc = e32.receiveMessage();
     if (rc.status.code == 1) {
@@ -839,31 +891,63 @@ void loop() {
   if (now - oledLast >= OLED_INTERVAL) {
     oledLast = now;
     updateOled();
-    oledPage = (oledPage + 1) % 5;  // 5 halaman: Status, N2, N3, QoS N2, QoS N3
+    oledPage = (oledPage + 1) % 3;  // Hanya 3 halaman aktif (0=GW, 1=N2, 2=N3)
   }
 
-  // ── 4. Firebase polling (only if WiFi connected) ──
-  if (wifiOk) {
-    // Poll relay states
+  // ── 4. Deferred Firebase Upload (1 HTTP per iterasi loop) ──
+  // Strategi: setiap iterasi loop hanya jalankan 1 step upload
+  // sehingga Gateway cek LoRa lagi di antara setiap panggilan HTTP
+  if (wifiOk && e32.available() <= 1) {
+    bool didWork = false;
+
+    // Prioritas 1: Lanjutkan upload step yang sedang berjalan
+    for (int node = 2; node <= 3 && !didWork; node++) {
+      if (uploadStep[node] > 0) {
+        runUploadStep(node);
+        didWork = true;
+      }
+    }
+
+    // Prioritas 2: Mulai upload baru jika ada data pending
+    if (!didWork) {
+      for (int node = 2; node <= 3; node++) {
+        if (pendingUpload[node]) {
+          startUpload(node);
+          runUploadStep(node);  // Jalankan step 1 langsung
+          pendingUpload[node] = false;
+          break;
+        }
+      }
+    }
+  }
+
+  // ── 5. Firebase polling (dengan jeda, hanya jika tidak ada LoRa masuk) ──
+  if (wifiOk && e32.available() <= 1) {
+    // Poll relay states (kedua node sekaligus)
     if (now - lastRelayPoll >= RELAY_POLL_INTERVAL) {
       lastRelayPoll = now;
       pollRelays();
     }
-
-    // Poll mode
-    if (now - lastModePoll >= MODE_POLL_INTERVAL) {
+    // Poll mode (kedua node sekaligus)
+    else if (now - lastModePoll >= MODE_POLL_INTERVAL) {
       lastModePoll = now;
       pollMode();
     }
-
     // Node watchdog
-    if (now - lastWatchdog >= WATCHDOG_INTERVAL) {
+    else if (now - lastWatchdog >= WATCHDOG_INTERVAL) {
       lastWatchdog = now;
       checkWatchdog();
     }
   }
 
-  // ── 5. WiFi health check ──
+  // ── 5b. Auto-Sync independen (PRIORITAS 3: jalan setiap 2 detik) ──
+  // Tidak bergantung pada WiFi atau LoRa RX — murni cek RAM dan kirim LoRa
+  if (now - lastAutoSync >= AUTO_SYNC_INTERVAL) {
+    lastAutoSync = now;
+    runAutoSync();
+  }
+
+  // ── 6. WiFi health check ──
   if (now - lastWifiCheck >= WIFI_CHECK_INTERVAL) {
     lastWifiCheck = now;
     checkWifi();
