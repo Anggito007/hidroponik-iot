@@ -406,57 +406,42 @@ void processLoRa(char* msg) {
   Serial.printf("[RX] N%d #%d T:%.1f H:%.1f TDS:%d\n",
     node, n.seq, n.temp, n.hum, n.tds);
 
-  // ── QoS Calculations (FIXED) ──
+  // ── QoS Calculations ──
+  // Simpan ukuran payload untuk throughput
   n.payloadSize = strlen(msg) + 5;  // +5 untuk header "DATA:" yang sudah dipotong
-  n.totalReceived++;  // Selalu hitung setiap paket masuk (PENTING untuk akurasi loss)
 
-  // 1. Delay (Latensi) — Metode Inter-Arrival Jitter
-  //    Mengukur selisih antara interval kedatangan aktual vs interval kirim (5 detik)
-  //    Jika Node mengirim setiap 5000ms, maka delay = (t_now - t_prev) - 5000
-  //    Nilai positif = ada jeda/latensi tambahan di jalur LoRa
-  if (n.prevSeen > 0 && n.seen > n.prevSeen) {
-    unsigned long actualInterval = n.seen - n.prevSeen;
-    // Delay = selisih dari interval ideal (SEND_MS = 5000ms)
-    // Jika paket datang tepat waktu, delay ≈ 0
-    // Jika paket datang terlambat 300ms, delay = 300ms (latensi transmisi LoRa)
-    if (actualInterval > SEND_MS) {
-      n.lastDelay = actualInterval - SEND_MS;
-    } else {
-      n.lastDelay = 0;  // Paket datang lebih cepat/tepat waktu
-    }
-  } else if (n.totalReceived == 1) {
-    // Paket pertama: estimasi delay transmisi LoRa berdasarkan air data rate
-    // Air Data Rate 1.2kbps, payload ~35 byte = 280 bit → ~233ms air time
-    n.lastDelay = 233;  // Estimasi air time untuk paket pertama
+  // 1. Delay (Latensi)
+  //    Selisih millis() Gateway saat terima vs millis() Node saat kirim
+  if (n.nodeMillis > 0) {
+    unsigned long gwNow = millis();
+    // Jika millis Node < millis Gateway (normal karena boot berbeda),
+    // hitung selisih sebagai estimasi delay transmisi
+    n.lastDelay = (gwNow > n.nodeMillis) ? (gwNow - n.nodeMillis) : 0;
+    n.totalDelay += n.lastDelay;
+    n.totalReceived++;
+    n.avgDelay = (float)n.totalDelay / (float)n.totalReceived;
   }
-  n.totalDelay += n.lastDelay;
-  n.avgDelay = (float)n.totalDelay / (float)n.totalReceived;
-  n.prevSeen = n.seen;
 
-  // 2. Packet Loss (%) — Berdasarkan gap sequence number
+  // 2. Packet Loss (%)
+  //    Berdasarkan gap sequence number
   if (n.seq > 0) {
     n.packetLoss = (n.lostPackets > 0)
       ? (float)n.lostPackets / (float)(n.lostPackets + n.totalReceived) * 100.0f
       : 0.0f;
   }
 
-  // 3. Throughput (bps) — Kecepatan transfer data aktual saat sinyal LoRa aktif
-  //    Rumus: payload_bits / air_time_seconds
-  //    Air time dihitung dari Air Data Rate yang dikonfigurasi (1200 bps = 1.2 kbps)
-  //    Ini mengukur throughput efektif setelah overhead FEC/preamble
-  {
-    // Air Data Rate = 1200 bps (konfigurasi E32 saat ini)
-    // Overhead: preamble (~13 byte) + sync (3 byte) + FEC (~30% overhead)
-    const int AIR_DATA_RATE_BPS = 1200;
-    int totalBits = n.payloadSize * 8;
-    // Efisiensi ~70% setelah preamble + FEC overhead
-    n.throughput = AIR_DATA_RATE_BPS * 0.70f;  // Throughput efektif ≈ 840 bps
-    // Alternatif: throughput aplikasi (payload per interval)
-    // n.throughput = (float)(totalBits) / (SEND_MS / 1000.0f);  // ~56 bps
+  // 3. Throughput (bps)
+  //    Ukuran payload (bit) dibagi interval kedatangan (detik)
+  if (n.prevSeen > 0 && n.seen > n.prevSeen) {
+    float intervalSec = (float)(n.seen - n.prevSeen) / 1000.0f;
+    if (intervalSec > 0.1f) {  // guard: minimal 100ms
+      n.throughput = (float)(n.payloadSize * 8) / intervalSec;
+    }
   }
+  n.prevSeen = n.seen;
 
-  Serial.printf("[QoS] N%d Delay:%lums Avg:%.0fms Loss:%.1f%% Thpt:%.0fbps RX:%lu\n",
-    node, n.lastDelay, n.avgDelay, n.packetLoss, n.throughput, n.totalReceived);
+  Serial.printf("[QoS] N%d Delay:%lums Avg:%.0fms Loss:%.1f%% Thpt:%.0fbps\n",
+    node, n.lastDelay, n.avgDelay, n.packetLoss, n.throughput);
 
   // Tandai data siap upload (TIDAK langsung panggil Firebase di sini)
   // Firebase upload akan dilakukan di loop() secara terpisah
